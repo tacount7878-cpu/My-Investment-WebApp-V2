@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>交易紀錄 V6.15</title>
+<title>交易紀錄 V6.27</title>
 
 <!-- 引入 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -332,7 +332,7 @@ window.onload = () => {
   if(savedCashUsd) document.getElementById('inp-cash-usd').value = savedCashUsd;
   if(savedLoanTwd) document.getElementById('inp-loan-twd').value = savedLoanTwd;
   
-  calcTotalNetWorth(); // 剛載入時先用舊數值算一次
+  calcTotalNetWorth(); 
 };
 
 // ====== 1. 視圖切換 ======
@@ -354,7 +354,7 @@ function switchView(viewName) {
   }
 }
 
-// ====== 2. 資料更新邏輯 ======
+// ====== 2. 資料更新邏輯 (重點：打包 inputs 傳給後端) ======
 function refreshDashboard(isSilent = false) {
   if(!isSilent) {
     document.getElementById('loading-overlay-dash').style.display = 'block';
@@ -362,6 +362,14 @@ function refreshDashboard(isSilent = false) {
     document.getElementById('loading-overlay-net').style.display = 'block';
     document.getElementById('networth-content').style.display = 'none';
   }
+
+  // 📦 收集 UI 輸入值
+  const inputs = {
+    cashTwd: document.getElementById('inp-cash-twd').value,
+    settleTwd: document.getElementById('inp-settle-twd').value,
+    cashUsd: document.getElementById('inp-cash-usd').value,
+    loanTwd: document.getElementById('inp-loan-twd').value
+  };
 
   scriptRun
     .withSuccessHandler(data => {
@@ -405,7 +413,7 @@ function refreshDashboard(isSilent = false) {
     .withFailureHandler(err => {
       if(!isSilent) alert("數據載入失敗: " + err.message);
     })
-    .getDashboardData();
+    .getDashboardData(inputs); // 🚀 發送！
 }
 
 function showUpdateIndicator() {
@@ -425,7 +433,7 @@ function calcTotalNetWorth() {
   const cashUsd = Number(document.getElementById('inp-cash-usd').value) || 0;
   const loanTwd = Number(document.getElementById('inp-loan-twd').value) || 0;
 
-  // 自動寫入手機/瀏覽器本機記憶體
+  // 自動寫入 LocalStorage
   localStorage.setItem('wr_cash_twd', document.getElementById('inp-cash-twd').value);
   localStorage.setItem('wr_settle_twd', document.getElementById('inp-settle-twd').value);
   localStorage.setItem('wr_cash_usd', document.getElementById('inp-cash-usd').value);
@@ -435,17 +443,15 @@ function calcTotalNetWorth() {
   document.getElementById('val-final-networth').innerText = finalNetWorth.toLocaleString('zh-TW', {maximumFractionDigits:0});
 }
 
-// ====== 5. 繪製圖表函數 ======
+// ====== 5. 繪製圖表函數 (維持不變) ======
 function renderHistory(history, isSilent) {
   if(history.length === 0) return;
-
   if (isSilent && historyChart) {
     historyChart.data.labels = history.map(d => d.date);
     historyChart.data.datasets[0].data = history.map(d => d.val);
     historyChart.update();
     return;
   }
-
   const ctx = document.getElementById('historyChart').getContext('2d');
   if(historyChart) historyChart.destroy();
   
@@ -475,14 +481,12 @@ function renderHistory(history, isSilent) {
 function renderPieChart(canvasId, dataArray, isSilent) {
   if(dataArray.length === 0) return;
   let existingChart = canvasId === 'assetsChart' ? assetsChart : regionsChart;
-
   if (isSilent && existingChart) {
     existingChart.data.labels = dataArray.map(d => d.name);
     existingChart.data.datasets[0].data = dataArray.map(d => d.value);
     existingChart.update();
     return;
   }
-
   const ctx = document.getElementById(canvasId).getContext('2d');
   if(existingChart) existingChart.destroy();
 
@@ -520,7 +524,7 @@ function renderPieChart(canvasId, dataArray, isSilent) {
   if(canvasId === 'regionsChart') regionsChart = newChart;
 }
 
-// ====== 6. 表單邏輯 ======
+// ====== 6. 表單邏輯 (維持不變) ======
 function quick(name,symbol,platform){
   document.getElementById("name").value=name;
   document.getElementById("symbol").value=symbol;

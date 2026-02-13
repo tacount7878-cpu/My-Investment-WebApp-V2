@@ -1,8 +1,9 @@
 /**
- * 投資戰情室 V6.25
- * 修正重點：
- * 1. 修正 getDashboardData 讀取「資產統計(彙整)」的列數 (從 Row 5 改為 Row 1)。
- * 2. 修正 updateMarketData 尋找欄位的邏輯，增加容錯。
+ * 投資戰情室 V6.27
+ * 功能升級：
+ * 1. getDashboardData 接收前端輸入的現金/貸款數據。
+ * 2. 自動抓取 Yahoo 匯率並與現金數據一併寫入「庫存彙整(細項)」指定儲存格。
+ * 3. 整合 updateMarketData 確保股價同時更新。
  */
 
 const CONFIG = {
@@ -10,7 +11,8 @@ const CONFIG = {
   SHEET_LOGS: "買賣紀錄_2026",
   SHEET_HISTORY: "淨值歷史",
   SHEET_ASSETS: "資產統計(彙整)",
-  SHEET_REGIONS: "投資地區"
+  SHEET_REGIONS: "投資地區",
+  SHEET_DETAILS: "庫存彙整(細項)" // 新增：指定寫入的分頁
 };
 
 /* ================================
@@ -26,43 +28,39 @@ function forceAuth() {
 ================================ */
 function doGet() {
   return HtmlService
-    .createHtmlOutputFromFile("apps_script/ui") // 請確認您的檔案是在 apps_script 資料夾下還是在根目錄，若在根目錄請改為 "ui"
+    .createHtmlOutputFromFile("apps_script/ui") // 若您的檔案在根目錄，請改為 "ui"
     .setTitle("投資戰情室")
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
 /* ================================
-   2️⃣ 手動更新市價（核心）
+   2️⃣ 手動更新市價 (內部呼叫)
+   只負責更新「資產統計(彙整)」的股價
 ================================ */
 function updateMarketData() {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const sh = ss.getSheetByName(CONFIG.SHEET_ASSETS);
-  if (!sh) return "找不到工作表";
+  if (!sh) return; 
 
-  // 嘗試自動判斷標題列在第幾列 (優先找 Row 1, 找不到找 Row 5)
+  // 自動判斷標題列 (Row 1 或 Row 5)
   let headerRow = 1;
   let headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   let symbolCol = headers.indexOf("Yahoo代號(Symbol)") + 1;
 
   if (symbolCol <= 0) {
-    // 如果第 1 列找不到代號，試試看第 5 列 (相容舊格式)
     headers = sh.getRange(5, 1, 1, sh.getLastColumn()).getValues()[0];
     symbolCol = headers.indexOf("Yahoo代號(Symbol)") + 1;
     if (symbolCol > 0) headerRow = 5;
   }
 
-  // 如果還是找不到代號欄位，代表這張表可能不支援自動更新，直接跳過不報錯
-  if (symbolCol <= 0) {
-    console.warn("無法執行自動更新：找不到 'Yahoo代號(Symbol)' 欄位");
-    return "跳過更新";
-  }
+  if (symbolCol <= 0) return; 
 
   const priceCol = headers.indexOf("目前市價") + 1;
-  if (priceCol <= 0) return "找不到市價欄";
+  if (priceCol <= 0) return;
 
   const startRow = headerRow + 1;
   const lastRow = sh.getLastRow();
-  if (lastRow < startRow) return "無資料";
+  if (lastRow < startRow) return;
 
   const data = sh.getRange(startRow, symbolCol, lastRow - startRow + 1, 1).getValues();
   const prices = [];
@@ -79,12 +77,10 @@ function updateMarketData() {
   }
 
   sh.getRange(startRow, priceCol, prices.length, 1).setValues(prices);
-  SpreadsheetApp.flush();
-  return "更新完成";
 }
 
 /* ================================
-   3️⃣ Yahoo 抓價
+   3️⃣ Yahoo 抓價 & 匯率
 ================================ */
 function fetchYahooPrice(symbol) {
   try {
@@ -96,84 +92,94 @@ function fetchYahooPrice(symbol) {
     }
     return "";
   } catch (e) {
-    Logger.log("Fetch Error: " + symbol);
     return "";
   }
 }
 
 /* ================================
-   4️⃣ Dashboard 讀取 (修正讀取位置)
+   4️⃣ Dashboard 讀取與寫入 (核心入口)
 ================================ */
-function getDashboardData() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+function getDashboardData(inputs) {
+  // 1. 先更新股價 (Yahoo -> 資產統計表)
+  try { updateMarketData(); } catch (e) {}
 
-  /* ===== 1. 淨值歷史 ===== */
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  
+  // 2. 處理「庫存彙整(細項)」的寫入 (匯率 + UI 輸入值)
+  const detailSh = ss.getSheetByName(CONFIG.SHEET_DETAILS);
+  let freshUsdRate = 32.2; // 預設值
+
+  if (detailSh) {
+    // 2.1 抓取即時匯率
+    const fetchedRate = fetchYahooPrice("USDTWD=X");
+    if (fetchedRate && !isNaN(fetchedRate)) {
+      freshUsdRate = Number(fetchedRate);
+    }
+
+    // 2.2 寫入匯率到 A2
+    detailSh.getRange("A2").setValue(freshUsdRate);
+
+    // 2.3 寫入前端傳來的現金與貸款 (如果有傳的話)
+    if (inputs) {
+      // 確保轉為數字再寫入
+      if (inputs.cashTwd !== undefined && inputs.cashTwd !== "") detailSh.getRange("C2").setValue(Number(inputs.cashTwd));
+      if (inputs.settleTwd !== undefined && inputs.settleTwd !== "") detailSh.getRange("E2").setValue(Number(inputs.settleTwd));
+      if (inputs.cashUsd !== undefined && inputs.cashUsd !== "") detailSh.getRange("G2").setValue(Number(inputs.cashUsd));
+      if (inputs.loanTwd !== undefined && inputs.loanTwd !== "") detailSh.getRange("I2").setValue(Number(inputs.loanTwd));
+    }
+  }
+
+  // 3. 強制刷新計算 (確保剛寫入的數字被公式吃到)
+  SpreadsheetApp.flush();
+
+  /* ===== 以下為資料讀取 ===== */
+
+  // 1. 淨值歷史
   const histSh = ss.getSheetByName(CONFIG.SHEET_HISTORY);
   let history = [];
   if (histSh && histSh.getLastRow() >= 2) {
     const histData = histSh.getRange(Math.max(2, histSh.getLastRow() - 29), 1, 30, 2).getValues();
-    history = histData
-      .filter(r => r[0] && parseNum_(r[1]) > 0)
-      .map(r => ({
-        date: r[0] instanceof Date ? Utilities.formatDate(r[0], "GMT+8", "MM/dd") : String(r[0]),
-        val: parseNum_(r[1])
-      }));
+    history = histData.filter(r => r[0] && parseNum_(r[1]) > 0).map(r => ({
+      date: r[0] instanceof Date ? Utilities.formatDate(r[0], "GMT+8", "MM/dd") : String(r[0]),
+      val: parseNum_(r[1])
+    }));
   }
 
-  /* ===== 2. 資產統計(彙整) - 修正讀取 Row 1 ===== */
+  // 2. 資產統計 (依據您 V6.25 的修正，讀取 Row 1 標題)
   const assetSh = ss.getSheetByName(CONFIG.SHEET_ASSETS);
   let investTotal = 0;
   let assets = [];
-
   if (assetSh && assetSh.getLastRow() >= 2) {
-    // 🔥 修正：讀取第 1 列的標題 (原本是第 5 列)
     const headers = assetSh.getRange(1, 1, 1, assetSh.getLastColumn()).getValues()[0];
-    
-    // 對應您截圖中的欄位名稱
     const valueCol = headers.indexOf("市值(TWD)") + 1;
-    // 使用「合併鍵(GroupKey)」作為名稱，若找不到則找「標的名稱」
     let nameCol = headers.indexOf("合併鍵(GroupKey)") + 1; 
     if (nameCol <= 0) nameCol = headers.indexOf("標的名稱") + 1;
 
-    // 只有在找到欄位時才讀取
     if (valueCol > 0 && nameCol > 0) {
-      // 資料從第 2 列開始 (Row 2)
       const numRows = assetSh.getLastRow() - 1;
       const values = assetSh.getRange(2, valueCol, numRows, 1).getValues();
       const names = assetSh.getRange(2, nameCol, numRows, 1).getValues();
-
       for (let i = 0; i < values.length; i++) {
         const val = parseNum_(values[i][0]);
-        // 過濾掉 0 或負數，確保圓餅圖不報錯
         if (val > 0) {
           investTotal += val;
-          assets.push({
-            name: String(names[i][0] || ""),
-            value: val
-          });
+          assets.push({ name: String(names[i][0] || ""), value: val });
         }
       }
     }
   }
 
-  /* ===== 3. 投資地區 ===== */
+  // 3. 投資地區
   const regionSh = ss.getSheetByName(CONFIG.SHEET_REGIONS);
   let regions = [];
   if (regionSh && regionSh.getLastRow() >= 2) {
     const regionData = regionSh.getRange(2, 1, regionSh.getLastRow() - 1, 2).getValues();
-    regions = regionData.map(r => ({
-      name: String(r[0] || "").trim(),
-      value: parseNum_(r[1])
-    })).filter(r => r.value > 0);
+    regions = regionData.map(r => ({ name: String(r[0] || "").trim(), value: parseNum_(r[1]) })).filter(r => r.value > 0);
   }
 
-  /* ===== 4. 讀取摘要數據 (報酬率/損益/匯率) ===== */
-  // 嘗試從買賣紀錄表讀取 (根據您之前的截圖位置 Y1:Z30)
+  // 4. 摘要數據 (這裡可以繼續讀取買賣紀錄表的摘要，或依您的需求調整)
   const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
-  let realizedReturn = 0;
-  let realizedReturnTwd = 0;
-  let usdRate = 32.2; // 預設值
-
+  let realizedReturn = 0, realizedReturnTwd = 0;
   if (logSh) {
     const summaryData = logSh.getRange("Y1:Z30").getValues();
     for(let row of summaryData){
@@ -182,9 +188,6 @@ function getDashboardData() {
       if(label.includes("已實現總損益(TWD)")) realizedReturnTwd = parseNum_(val);
       if(label.includes("已實現總損益(%)")) realizedReturn = (Number(String(val).replace("%","")) || 0) * (String(val).includes("%") ? 1 : 100);
     }
-    // 嘗試讀取匯率 (假設在 H86)
-    const rateVal = logSh.getRange("H86").getValue();
-    if(typeof rateVal === 'number' && rateVal > 0) usdRate = rateVal;
   }
 
   return {
@@ -192,7 +195,7 @@ function getDashboardData() {
     assets,
     regions,
     investTotal,
-    usdRate,
+    usdRate: freshUsdRate,
     realizedReturn,
     realizedReturnTwd
   };
@@ -204,12 +207,11 @@ function getDashboardData() {
 function parseNum_(val) {
   if (val === "" || val === null || val === undefined) return 0;
   if (typeof val === "number") return val;
-  // 移除逗號再轉數字
   return Number(String(val).replace(/,/g, "")) || 0;
 }
 
 /* ================================
-   6️⃣ 交易寫入 (維持不變)
+   6️⃣ 交易寫入
 ================================ */
 function saveTrades(payload) {
   const lock = LockService.getScriptLock();
@@ -222,9 +224,7 @@ function saveTrades(payload) {
     const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h || "").trim());
     const getCol = (name) => headers.indexOf(name);
     const startRow = findFirstEmptyRow_(sh);
-    const rows = payload.trades.map((t, i) =>
-      buildFormulaRow_(headers, payload.defaults || {}, t, startRow + i, getCol)
-    );
+    const rows = payload.trades.map((t, i) => buildFormulaRow_(headers, payload.defaults || {}, t, startRow + i, getCol));
     sh.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
     SpreadsheetApp.flush();
     return { ok: true };
@@ -246,10 +246,7 @@ function findFirstEmptyRow_(sh) {
 
 function buildFormulaRow_(headers, defaults, t, r, getCol) {
   const row = new Array(headers.length).fill("");
-  const setVal = (name, val) => {
-    const idx = getCol(name);
-    if (idx !== -1) row[idx] = val;
-  };
+  const setVal = (name, val) => { const idx = getCol(name); if (idx !== -1) row[idx] = val; };
   setVal("日期", t.date || new Date());
   setVal("交易類型", t.type);
   setVal("名稱", t.name);
@@ -257,6 +254,5 @@ function buildFormulaRow_(headers, defaults, t, r, getCol) {
   setVal("買入價格", Number(t.price));
   setVal("買入股數", Number(t.qty));
   setVal("狀態", "已完成");
-  // ... 其他公式 ...
   return row;
 }
