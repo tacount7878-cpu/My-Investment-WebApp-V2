@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>交易紀錄 V6.27</title>
+<title>交易紀錄 V6.30</title>
 
 <!-- 引入 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -257,24 +257,24 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
         </div>
       </div>
 
-      <!-- 手動輸入區 (具備自動記憶功能) -->
+      <!-- 手動輸入區 (已設定 inputmode="decimal" 支援小數點) -->
       <div class="hint" style="margin-top:20px; margin-bottom:10px;">輸入目前帳戶餘額</div>
       
       <div class="calc-row">
         <div class="calc-label">目前帳戶現金 (TWD)</div>
-        <input type="number" id="inp-cash-twd" class="calc-input" placeholder="0" inputmode="numeric" oninput="calcTotalNetWorth()">
+        <input type="number" id="inp-cash-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row">
         <div class="calc-label">交割中現金 (TWD)</div>
-        <input type="number" id="inp-settle-twd" class="calc-input" placeholder="0" inputmode="numeric" oninput="calcTotalNetWorth()">
+        <input type="number" id="inp-settle-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row">
         <div class="calc-label">美元現金 (USD)</div>
-        <input type="number" id="inp-cash-usd" class="calc-input" placeholder="0" inputmode="numeric" oninput="calcTotalNetWorth()">
+        <input type="number" id="inp-cash-usd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row" style="border-color:rgba(255,59,48,0.3);">
         <div class="calc-label" style="color:#ff6b6b;">目前貸款金額 (TWD)</div>
-        <input type="number" id="inp-loan-twd" class="calc-input" placeholder="0" inputmode="numeric" oninput="calcTotalNetWorth()" style="color:#ff6b6b;">
+        <input type="number" id="inp-loan-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()" style="color:#ff6b6b;">
       </div>
 
       <!-- 最終結果 -->

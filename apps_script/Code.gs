@@ -1,9 +1,11 @@
 /**
  * 投資戰情室 V6.30 - 全功能終極整合版
- * 整合了：
- * 1. Yahoo 即時股價更新 (updateMarketData)
- * 2. UI 現金/貸款數據回寫 (getDashboardData -> SHEET_DETAILS)
- * 3. 總淨值歷史自動記錄 (getDashboardData -> SHEET_HISTORY，同日覆蓋/異日新增)
+ * 整合功能：
+ * 1. updateMarketData: 抓取 Yahoo 股價更新「資產統計」。
+ * 2. getDashboardData: 
+ * - 接收 UI 傳來的現金/貸款，寫入「庫存彙整(細項)」。
+ * - 抓取 Yahoo 匯率，寫入「庫存彙整(細項)」。
+ * - 計算總淨值，寫入「淨值歷史」(同日覆蓋/異日新增)。
  */
 
 const CONFIG = {
@@ -12,11 +14,11 @@ const CONFIG = {
   SHEET_HISTORY: "淨值歷史",
   SHEET_ASSETS: "資產統計(彙整)",
   SHEET_REGIONS: "投資地區",
-  SHEET_DETAILS: "庫存彙整(細項)" // ★ 寫入目標 1
+  SHEET_DETAILS: "庫存彙整(細項)" // ★ 寫入目標
 };
 
 /* ================================
-   0️⃣ 強制授權
+   0️⃣ 強制授權 (後台手動執行用)
 ================================ */
 function forceAuth() {
   UrlFetchApp.fetch("https://www.google.com");
@@ -103,7 +105,6 @@ function fetchYahooPrice(symbol) {
 
 /* ================================
    4️⃣ Dashboard 讀取與寫入 (核心入口)
-   這裡包含了您要的所有功能！
 ================================ */
 function getDashboardData(inputs) {
   // 1. 先去更新資產表的股價
@@ -124,7 +125,6 @@ function getDashboardData(inputs) {
     detailSh.getRange("A2").setValue(freshUsdRate);
 
     // 2.3 寫入 UI 傳來的數據 (C2, E2, G2, I2)
-    // 這裡就是您指定的覆蓋功能
     if (inputs) {
       if (inputs.cashTwd !== "") detailSh.getRange("C2").setValue(Number(inputs.cashTwd));
       if (inputs.settleTwd !== "") detailSh.getRange("E2").setValue(Number(inputs.settleTwd));
@@ -144,7 +144,7 @@ function getDashboardData(inputs) {
   let assets = [];
   
   if (assetSh && assetSh.getLastRow() >= 2) {
-    // 修正：讀取 Row 1 標題
+    // 讀取 Row 1 標題
     const headers = assetSh.getRange(1, 1, 1, assetSh.getLastColumn()).getValues()[0];
     const valueCol = headers.indexOf("市值(TWD)") + 1;
     let nameCol = headers.indexOf("合併鍵(GroupKey)") + 1;
@@ -194,12 +194,12 @@ function getDashboardData(inputs) {
     }
 
     if (isSameDay) {
-      // 同一天 -> 覆蓋最後一行 (更新時間與淨值)
+      // 同一天 -> 覆蓋最後一行
       histSh.getRange(lastRow, 1).setValue(now);
       histSh.getRange(lastRow, 2).setValue(currentTotalNetWorth);
     } else {
       // 不同天 -> 新增一行
-      // 如果表格是空的，補標題
+      // 檢查是否是空表，如果是，補標題
       if (lastRow < 2 && histSh.getRange(1,1).getValue() === "") {
          histSh.appendRow(["時間", "資產總淨值(TWD)"]); 
       }
