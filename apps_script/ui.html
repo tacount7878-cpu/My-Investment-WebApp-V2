@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>交易紀錄 V6.30</title>
+<title>交易紀錄 V6.41</title>
 
 <!-- 引入 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -26,6 +26,7 @@ body{
   background:linear-gradient(180deg,var(--bg0),var(--bg1));
   color:var(--txt);
   padding:20px;
+  min-height: 100vh;
 }
 .card{
   max-width:520px;
@@ -115,7 +116,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 .final-label { color: #a3e4b5; font-size: 14px; font-weight: 800; margin-bottom: 8px; }
 .final-val { color: #34c759; font-size: 36px; font-weight: 900; font-variant-numeric: tabular-nums; }
 
-#loading-overlay{ font-size:14px; color:var(--muted); text-align:center; padding:40px 0; }
+#loading-overlay-dash, #loading-overlay-net { font-size:14px; color:var(--muted); text-align:center; padding:40px 0; }
 #env-tag { position: fixed; top: 10px; right: 10px; font-size: 10px; color: var(--muted); opacity: 0.5; z-index:999;}
 .update-indicator { font-size:12px; color:var(--green); text-align:center; margin-bottom:15px; font-weight:700; opacity:0; transition:opacity 0.3s;}
 </style>
@@ -123,7 +124,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
 <body>
 
-<div id="env-tag">Mode: Detecting...</div>
+<div id="env-tag">V6.41 Preview</div>
 
 <!-- ================= 視圖 1：輸入表單 ================= -->
 <div id="view-input" class="view active">
@@ -149,11 +150,11 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
     <div class="hint">常用快選</div>
     <div class="chips">
-      <div class="chip" onclick="quick('富邦台50','006208.TW','元大(台股)')">富邦台50</div>
-      <div class="chip" onclick="quick('台積電','2330.TW','元大(台股)')">台積電</div>
-      <div class="chip" onclick="quick('VWRA全球股票','VWRA.L','IBKR')">VWRA</div>
-      <div class="chip" onclick="quick('特斯拉(FT)','TSLA','Firstrade(FT)')">TSLA(FT)</div>
-      <div class="chip" onclick="quick('比特幣','BTC-USD','錢包')">比特幣</div>
+      <div class="chip" onclick="quick('富邦台50','006208.TW')">富邦台50</div>
+      <div class="chip" onclick="quick('台積電','2330.TW')">台積電</div>
+      <div class="chip" onclick="quick('Alphabet','GOOGL')">Alphabet</div>
+      <div class="chip" onclick="quick('Tesla','TSLA')">Tesla</div>
+      <div class="chip" onclick="quick('Bitcoin','BTC-USD')">比特幣</div>
     </div>
 
     <div class="hint">價格</div>
@@ -161,31 +162,6 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
     <div class="hint">股數</div>
     <input id="qty" class="bigInput" type="number" step="any" inputmode="decimal">
-
-    <div class="hint">手續費</div>
-    <input id="fee" class="bigInput" type="number" step="any" placeholder="未填自動 0" inputmode="decimal">
-
-    <div class="hint">交易稅</div>
-    <input id="tax" class="bigInput" type="number" step="any" placeholder="未填自動 0" inputmode="decimal">
-
-    <div class="hint">成本（賣出必填）</div>
-    <input id="cost" class="bigInput" type="number" step="any" inputmode="decimal">
-
-    <div class="hint">平台</div>
-    <select id="platform" class="bigInput">
-      <option value="元大(台股)">元大(台股)</option>
-      <option value="元大複委託(美股)">元大複委託(美股)</option>
-      <option value="Firstrade(FT)">Firstrade(FT)</option>
-      <option value="IBKR">IBKR</option>
-      <option value="錢包">錢包</option>
-    </select>
-
-    <div class="hint">帳戶類型</div>
-    <select id="account" class="bigInput">
-      <option value="TWD帳戶">TWD帳戶</option>
-      <option value="USD外幣帳戶">USD外幣帳戶</option>
-      <option value="其他">其他</option>
-    </select>
 
     <button class="primary" onclick="submitTrade()">送出交易</button>
     <div id="msg" class="toast"></div>
@@ -237,14 +213,13 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
     <div id="networth-content" style="display:none;">
       
-      <!-- 後台自動帶入區 -->
       <div class="chart-card" style="border-color:rgba(47,123,255,0.3);">
         <div class="calc-row">
           <div class="calc-label">📊 投資部位總市值 (TWD)</div>
           <div class="calc-value" id="val-invest">0</div>
         </div>
         <div class="calc-row">
-          <div class="calc-label">📈 目前報酬率 (已實現)</div>
+          <div class="calc-label">📈 報酬率 (已實現)</div>
           <div class="calc-value" id="val-return" style="color:var(--green);">0.00%</div>
         </div>
         <div class="calc-row">
@@ -253,326 +228,294 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
         </div>
         <div class="calc-row" style="border:none; margin-bottom:0; padding-bottom:0;">
           <div class="calc-label">💱 即時匯率 (USD/TWD)</div>
-          <div class="calc-value" id="val-usdrate" style="color:var(--muted);">32.00</div>
+          <div class="calc-value" id="val-usdrate" style="color:var(--muted);">31.41</div>
         </div>
       </div>
 
-      <!-- 手動輸入區 (已設定 inputmode="decimal" 支援小數點) -->
       <div class="hint" style="margin-top:20px; margin-bottom:10px;">輸入目前帳戶餘額</div>
       
       <div class="calc-row">
-        <div class="calc-label">目前帳戶現金 (TWD)</div>
-        <input type="number" id="inp-cash-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
+        <div class="calc-label">帳戶現金 (TWD)</div>
+        <input type="number" id="inp-cash-twd" class="calc-input" placeholder="0" inputmode="decimal" step="any" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row">
         <div class="calc-label">交割中現金 (TWD)</div>
-        <input type="number" id="inp-settle-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
+        <input type="number" id="inp-settle-twd" class="calc-input" placeholder="0" inputmode="decimal" step="any" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row">
         <div class="calc-label">美元現金 (USD)</div>
-        <input type="number" id="inp-cash-usd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()">
+        <input type="number" id="inp-cash-usd" class="calc-input" placeholder="0" inputmode="decimal" step="any" oninput="calcTotalNetWorth()">
       </div>
       <div class="calc-row" style="border-color:rgba(255,59,48,0.3);">
-        <div class="calc-label" style="color:#ff6b6b;">目前貸款金額 (TWD)</div>
-        <input type="number" id="inp-loan-twd" class="calc-input" placeholder="0" inputmode="decimal" oninput="calcTotalNetWorth()" style="color:#ff6b6b;">
+        <div class="calc-label" style="color:#ff6b6b;">貸款金額 (TWD)</div>
+        <input type="number" id="inp-loan-twd" class="calc-input" placeholder="0" inputmode="decimal" step="any" oninput="calcTotalNetWorth()" style="color:#ff6b6b;">
       </div>
 
-      <!-- 最終結果 -->
       <div class="final-networth">
         <div class="final-label">資產總淨值 (扣除貸款)</div>
         <div class="final-val" id="val-final-networth">0</div>
       </div>
-
     </div>
   </div>
 </div>
 
 <script>
-// 註冊百分比擴充
 Chart.register(ChartDataLabels);
 
 const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
-document.getElementById('env-tag').innerText = isGasEnv ? "Mode: GAS Online" : "Mode: Preview Simulator";
+document.getElementById('env-tag').innerText = isGasEnv ? "Mode: Online" : "Mode: Preview Simulator";
 
-const scriptRun = isGasEnv ? google.script.run : {
-  withSuccessHandler: function(cb) {
-    return {
-      withFailureHandler: function() {
-        return {
-          getDashboardData: () => {
-            setTimeout(() => cb({
-              history: [{date:'1/30', val:5283226}, {date:'2/2', val:5293960}, {date:'2/9', val:5406320}],
-              assets: [{name:'0050/006208', value:2218500}, {name:'台股債券', value:851020}, {name:'VT/VWRA', value:2323671}],
-              regions: [{name:'台股', value:2579685}, {name:'美股', value:801083}],
-              investTotal: 6797152, usdRate: 32.2, realizedReturn: 22.29, realizedReturnTwd: 242988 
-            }), 400);
-          },
-          saveTrades: () => setTimeout(() => cb({ ok: true, row: 99 }), 600)
-        };
-      }
-    };
-  }
-};
+// 模擬器邏輯
+const scriptRun = isGasEnv ? google.script.run : (() => {
+  const mockObj = {
+    _callback: null,
+    withSuccessHandler: function(cb) { this._callback = cb; return this; },
+    withFailureHandler: function(cb) { return this; },
+    getDashboardData: function(inputs, isManual) {
+      setTimeout(() => {
+        if (this._callback) this._callback({
+          history: [
+            {date:'01/07', val:5358703}, {date:'01/08', val:5333739}, {date:'01/09', val:5357119}, 
+            {date:'01/14', val:5360433}, {date:'01/16', val:5583811}, {date:'01/22', val:5323136}, 
+            {date:'01/24', val:5311442}, {date:'01/26', val:5318288}, {date:'01/27', val:5390603}, 
+            {date:'01/29', val:5334134}, {date:'01/30', val:5283226}, {date:'02/02', val:5293960}, 
+            {date:'02/03', val:5352465}, {date:'02/04', val:5308897}, {date:'02/05', val:5245594}, 
+            {date:'02/09', val:5406319}, {date:'02/14', val:5698248}
+          ],
+          assets: [
+            {name:'0050', value:2316000}, 
+            {name:'2330', value:381085},
+            {name:'債卷(台股)', value:1054130},
+            {name:'VT/VWRA', value:2310949},
+            {name:'TSLA (特斯拉)', value:379346},
+            {name:'Google (Alphabet)', value:392013},
+            {name:'IBKR', value:8869},
+            {name:'Bitcoin', value:232460}
+          ],
+          regions: [
+            {name:'台股', value:2697085}, {name:'美股', value:780228}, 
+            {name:'全球', value:2310949}, {name:'加密', value:232460},
+            {name:'債卷(台股)', value:1054130}
+          ],
+          investTotal: 7074856, 
+          usdRate: 31.41, 
+          realizedReturn: 22.41,
+          realizedReturnTwd: 250034
+        });
+      }, 400);
+    },
+    saveTrades: function(payload) {
+      setTimeout(() => {
+        if (this._callback) this._callback({ ok: true, row: 99 });
+      }, 500);
+    }
+  };
+  return mockObj;
+})();
 
 let historyChart, assetsChart, regionsChart;
 let isDataLoaded = false; 
 let cachedData = null; 
 let currentInvestTotal = 0;
-let currentUsdRate = 32.0;
+let currentUsdRate = 31.41;
 
-// ====== 0. 讀取 LocalStorage 紀錄 ======
 window.onload = () => {
-  const savedCashTwd = localStorage.getItem('wr_cash_twd');
-  const savedSettleTwd = localStorage.getItem('wr_settle_twd');
-  const savedCashUsd = localStorage.getItem('wr_cash_usd');
-  const savedLoanTwd = localStorage.getItem('wr_loan_twd');
-
-  if(savedCashTwd) document.getElementById('inp-cash-twd').value = savedCashTwd;
-  if(savedSettleTwd) document.getElementById('inp-settle-twd').value = savedSettleTwd;
-  if(savedCashUsd) document.getElementById('inp-cash-usd').value = savedCashUsd;
-  if(savedLoanTwd) document.getElementById('inp-loan-twd').value = savedLoanTwd;
+  ['cash-twd','cash-usd','loan-twd','settle-twd'].forEach(id => {
+    const el = document.getElementById('inp-'+id);
+    if (el) {
+      const val = localStorage.getItem('wr_'+id.replace('-','_'));
+      if(val) el.value = val;
+    }
+  });
   
-  calcTotalNetWorth(); 
+  if(document.getElementById('inp-cash-usd') && !document.getElementById('inp-cash-usd').value) document.getElementById('inp-cash-usd').value = "4170.99";
+  if(document.getElementById('inp-loan-twd') && !document.getElementById('inp-loan-twd').value) document.getElementById('inp-loan-twd').value = "1507627";
+  
+  calcTotalNetWorth();
+  refreshDashboard(true);
 };
 
-// ====== 1. 視圖切換 ======
 function switchView(viewName) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + viewName).classList.add('active');
-  window.scrollTo(0, 0); 
-  
-  if(viewName === 'dashboard' || viewName === 'networth') {
-    if(!isDataLoaded) {
-      refreshDashboard(false);
-    } else if(viewName === 'dashboard' && cachedData) {
-      setTimeout(() => {
-        renderHistory(cachedData.history || [], false);
-        renderPieChart('assetsChart', cachedData.assets || [], false);
-        renderPieChart('regionsChart', cachedData.regions || [], false);
-      }, 50);
-    }
-  }
+  if(viewName !== 'input') renderCharts();
 }
 
-// ====== 2. 資料更新邏輯 (重點：打包 inputs 傳給後端) ======
 function refreshDashboard(isSilent = false) {
   if(!isSilent) {
-    document.getElementById('loading-overlay-dash').style.display = 'block';
-    document.getElementById('dashboard-content').style.display = 'none';
-    document.getElementById('loading-overlay-net').style.display = 'block';
-    document.getElementById('networth-content').style.display = 'none';
+    const dashOverlay = document.getElementById('loading-overlay-dash');
+    const netOverlay = document.getElementById('loading-overlay-net');
+    const dashContent = document.getElementById('dashboard-content');
+    const netContent = document.getElementById('networth-content');
+    if(dashOverlay) dashOverlay.style.display = 'block';
+    if(netOverlay) netOverlay.style.display = 'block';
+    if(dashContent) dashContent.style.display = 'none';
+    if(netContent) netContent.style.display = 'none';
   }
 
-  // 📦 收集 UI 輸入值
   const inputs = {
     cashTwd: document.getElementById('inp-cash-twd').value,
     settleTwd: document.getElementById('inp-settle-twd').value,
     cashUsd: document.getElementById('inp-cash-usd').value,
     loanTwd: document.getElementById('inp-loan-twd').value
   };
+  
+  scriptRun.withSuccessHandler(data => {
+    cachedData = data;
+    isDataLoaded = true;
+    
+    const dashOverlay = document.getElementById('loading-overlay-dash');
+    const netOverlay = document.getElementById('loading-overlay-net');
+    const dashContent = document.getElementById('dashboard-content');
+    const netContent = document.getElementById('networth-content');
+    if(dashOverlay) dashOverlay.style.display = 'none';
+    if(netOverlay) netOverlay.style.display = 'none';
+    if(dashContent) dashContent.style.display = 'block';
+    if(netContent) netContent.style.display = 'block';
 
-  scriptRun
-    .withSuccessHandler(data => {
-      cachedData = data;
-      isDataLoaded = true;
+    currentInvestTotal = data.investTotal; currentUsdRate = data.usdRate;
+    document.getElementById('val-invest').innerText = data.investTotal.toLocaleString();
+    document.getElementById('val-usdrate').innerText = data.usdRate.toFixed(2);
+    
+    const ret = data.realizedReturn || 0;
+    const retEl = document.getElementById('val-return');
+    retEl.innerText = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+    retEl.style.color = ret >= 0 ? 'var(--green)' : 'var(--red)';
+    
+    const retTwd = data.realizedReturnTwd || 0;
+    const retTwdEl = document.getElementById('val-realized-twd');
+    retTwdEl.innerText = (retTwd > 0 ? '+' : '') + retTwd.toLocaleString();
+    retTwdEl.style.color = retTwd >= 0 ? 'var(--green)' : 'var(--red)';
+    
+    calcTotalNetWorth();
+    if(!isSilent) showUpdateIndicator();
+    renderCharts();
+  }).getDashboardData(inputs, !isSilent);
+}
 
-      if(!isSilent) {
-        document.getElementById('loading-overlay-dash').style.display = 'none';
-        document.getElementById('dashboard-content').style.display = 'block';
-        document.getElementById('loading-overlay-net').style.display = 'none';
-        document.getElementById('networth-content').style.display = 'block';
-      }
-      
-      currentInvestTotal = data.investTotal || 0;
-      currentUsdRate = data.usdRate || 32.0;
-      
-      document.getElementById('val-invest').innerText = currentInvestTotal.toLocaleString('zh-TW', {maximumFractionDigits:0});
-      document.getElementById('val-usdrate').innerText = currentUsdRate.toFixed(2);
-      
-      const ret = data.realizedReturn || 0;
-      const retEl = document.getElementById('val-return');
-      retEl.innerText = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
-      retEl.style.color = ret >= 0 ? 'var(--green)' : 'var(--red)';
+function calcTotalNetWorth() {
+  const cashTwdEl = document.getElementById('inp-cash-twd');
+  const settleTwdEl = document.getElementById('inp-settle-twd');
+  const cashUsdEl = document.getElementById('inp-cash-usd');
+  const loanTwdEl = document.getElementById('inp-loan-twd');
 
-      const retTwd = data.realizedReturnTwd || 0;
-      const retTwdEl = document.getElementById('val-realized-twd');
-      retTwdEl.innerText = (retTwd > 0 ? '+' : '') + retTwd.toLocaleString('zh-TW', {maximumFractionDigits:0});
-      retTwdEl.style.color = retTwd >= 0 ? 'var(--green)' : 'var(--red)';
-      
-      calcTotalNetWorth();
-      showUpdateIndicator();
+  const t = Number(cashTwdEl ? cashTwdEl.value : 0) || 0;
+  const s = Number(settleTwdEl ? settleTwdEl.value : 0) || 0;
+  const u = Number(cashUsdEl ? cashUsdEl.value : 0) || 0;
+  const l = Number(loanTwdEl ? loanTwdEl.value : 0) || 0;
+  
+  localStorage.setItem('wr_cash_twd', t); 
+  localStorage.setItem('wr_settle_twd', s); 
+  localStorage.setItem('wr_cash_usd', u); 
+  localStorage.setItem('wr_loan_twd', l);
+  
+  const total = currentInvestTotal + t + s + (u * currentUsdRate) - l;
+  const finalEl = document.getElementById('val-final-networth');
+  if (finalEl) finalEl.innerText = Math.round(total).toLocaleString();
+}
 
-      if(document.getElementById('view-dashboard').classList.contains('active')) {
-        setTimeout(() => {
-          renderHistory(data.history || [], isSilent);
-          renderPieChart('assetsChart', data.assets || [], isSilent);
-          renderPieChart('regionsChart', data.regions || [], isSilent);
-        }, 50);
-      }
-    })
-    .withFailureHandler(err => {
-      if(!isSilent) alert("數據載入失敗: " + err.message);
-    })
-    .getDashboardData(inputs); // 🚀 發送！
+function renderCharts() {
+  if(!cachedData) return;
+  
+  // 1. History Chart - 隱藏每個數據點上的金額標籤
+  const ctxH = document.getElementById('historyChart').getContext('2d');
+  if(historyChart) historyChart.destroy();
+  historyChart = new Chart(ctxH, { 
+    type: 'line', 
+    data: { 
+      labels: cachedData.history.map(d=>d.date), 
+      datasets:[{ label:'總淨值', data:cachedData.history.map(d=>d.val), borderColor:'#2f7bff', fill:true, backgroundColor:'rgba(47,123,255,0.1)', tension:0.4 }] 
+    }, 
+    options: { 
+      responsive:true, maintainAspectRatio:false, 
+      plugins:{
+        legend:{display:false},
+        datalabels:{ display: false } // 隱藏折線圖標籤
+      }, 
+      scales:{ x:{ticks:{color:'#a9b6d6'}}, y:{ticks:{color:'#a9b6d6'}} } 
+    } 
+  });
+  
+  // 2. Assets Chart - 移除邊框 (borderWidth: 0)
+  const ctxA = document.getElementById('assetsChart').getContext('2d');
+  if(assetsChart) assetsChart.destroy();
+  assetsChart = new Chart(ctxA, { 
+    type: 'doughnut', 
+    data: { 
+      labels: cachedData.assets.map(d=>d.name), 
+      datasets:[{ 
+        data:cachedData.assets.map(d=>d.value), 
+        backgroundColor:['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E'],
+        borderWidth: 0 // 移除邊框
+      }] 
+    }, 
+    options: { 
+      responsive:true, maintainAspectRatio:false, 
+      plugins:{ 
+        legend:{position:'right',labels:{color:'#fff',boxWidth:12}},
+        datalabels:{ 
+          color:'#fff', font:{weight:'bold',size:10},
+          formatter:(v,c)=>{
+            let sum=0; c.dataset.data.forEach(x=>sum+=x);
+            if((v*100/sum) < 4) return null;
+            return (v*100/sum).toFixed(1)+'%';
+          }
+        } 
+      } 
+    } 
+  });
+
+  // 3. Regions Chart - 移除邊框 (borderWidth: 0)
+  const ctxR = document.getElementById('regionsChart').getContext('2d');
+  if(regionsChart) regionsChart.destroy();
+  regionsChart = new Chart(ctxR, { 
+    type: 'doughnut', 
+    data: { 
+      labels: cachedData.regions.map(d=>d.name), 
+      datasets:[{ 
+        data:cachedData.regions.map(d=>d.value), 
+        backgroundColor:['#2f7bff','#34c759','#5856d6','#ff9500','#ff3b30'],
+        borderWidth: 0 // 移除邊框
+      }] 
+    }, 
+    options: { 
+      responsive:true, maintainAspectRatio:false, cutout: '55%',
+      plugins:{ 
+        legend:{position:'right',labels:{color:'#fff',boxWidth:12}},
+        datalabels:{ 
+          color:'#fff', font:{weight:'bold',size:10},
+          formatter:(v,c)=>{
+            let sum=0; c.dataset.data.forEach(x=>sum+=x);
+            return (v*100/sum).toFixed(1)+'%';
+          }
+        } 
+      } 
+    } 
+  });
 }
 
 function showUpdateIndicator() {
-  const msg1 = document.getElementById('update-msg-dash');
-  const msg2 = document.getElementById('update-msg-net');
-  msg1.style.opacity = 1; msg2.style.opacity = 1;
-  setTimeout(() => { msg1.style.opacity = 0; msg2.style.opacity = 0; }, 2000);
-}
-
-// ====== 3. 定時自動更新 ======
-setInterval(() => { if(isDataLoaded) refreshDashboard(true); }, 60000); 
-
-// ====== 4. 總資產結算計算機 (包含自動儲存) ======
-function calcTotalNetWorth() {
-  const cashTwd = Number(document.getElementById('inp-cash-twd').value) || 0;
-  const settleTwd = Number(document.getElementById('inp-settle-twd').value) || 0;
-  const cashUsd = Number(document.getElementById('inp-cash-usd').value) || 0;
-  const loanTwd = Number(document.getElementById('inp-loan-twd').value) || 0;
-
-  // 自動寫入 LocalStorage
-  localStorage.setItem('wr_cash_twd', document.getElementById('inp-cash-twd').value);
-  localStorage.setItem('wr_settle_twd', document.getElementById('inp-settle-twd').value);
-  localStorage.setItem('wr_cash_usd', document.getElementById('inp-cash-usd').value);
-  localStorage.setItem('wr_loan_twd', document.getElementById('inp-loan-twd').value);
-
-  const finalNetWorth = currentInvestTotal + cashTwd + settleTwd + (cashUsd * currentUsdRate) - loanTwd;
-  document.getElementById('val-final-networth').innerText = finalNetWorth.toLocaleString('zh-TW', {maximumFractionDigits:0});
-}
-
-// ====== 5. 繪製圖表函數 (維持不變) ======
-function renderHistory(history, isSilent) {
-  if(history.length === 0) return;
-  if (isSilent && historyChart) {
-    historyChart.data.labels = history.map(d => d.date);
-    historyChart.data.datasets[0].data = history.map(d => d.val);
-    historyChart.update();
-    return;
-  }
-  const ctx = document.getElementById('historyChart').getContext('2d');
-  if(historyChart) historyChart.destroy();
-  
-  historyChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: history.map(d => d.date),
-      datasets: [{
-        label: '總淨值',
-        data: history.map(d => d.val),
-        borderColor: '#2f7bff', backgroundColor: 'rgba(47,123,255,0.1)',
-        fill: true, tension: 0.4, pointBackgroundColor: '#2f7bff', pointRadius: 2
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: { duration: 2000, easing: 'easeOutQuart' },
-      plugins: { legend: { display: false }, datalabels: { display: false } },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: '#a9b6d6', maxRotation: 45 } },
-        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#a9b6d6', callback: function(v) { return v.toLocaleString(); } } }
-      }
+  ['dash','net'].forEach(id => { 
+    const el = document.getElementById('update-msg-'+id);
+    if(el) {
+      el.style.opacity = 1; 
+      setTimeout(() => el.style.opacity = 0, 2000); 
     }
   });
 }
 
-function renderPieChart(canvasId, dataArray, isSilent) {
-  if(dataArray.length === 0) return;
-  let existingChart = canvasId === 'assetsChart' ? assetsChart : regionsChart;
-  if (isSilent && existingChart) {
-    existingChart.data.labels = dataArray.map(d => d.name);
-    existingChart.data.datasets[0].data = dataArray.map(d => d.value);
-    existingChart.update();
-    return;
-  }
-  const ctx = document.getElementById(canvasId).getContext('2d');
-  if(existingChart) existingChart.destroy();
-
-  const colors = ['#4285F4', '#34A853', '#FBBC05', '#EA4335', '#00BCD4', '#8E24AA', '#FF9800', '#9E9E9E'];
-  const newChart = new Chart(ctx, {
-    type: 'doughnut', 
-    data: {
-      labels: dataArray.map(d => d.name),
-      datasets: [{
-        data: dataArray.map(d => d.value),
-        backgroundColor: colors.slice(0, dataArray.length),
-        borderWidth: 2, borderColor: '#0f1a2c'    
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, cutout: '55%',              
-      animation: { animateRotate: true, animateScale: true, duration: 2000, easing: 'easeOutQuart' },
-      plugins: {
-        legend: { position: 'right', labels: { color: '#e8eefc', boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: function(c) { return `${c.label}: $${c.raw.toLocaleString()}`; } } },
-        datalabels: {
-          color: '#ffffff', font: { weight: 'bold', size: 11 },
-          formatter: (value, ctx) => {
-            let sum = 0;
-            ctx.chart.data.datasets[0].data.map(d => { sum += d; });
-            if ((value * 100 / sum) < 4) return null;
-            return (value * 100 / sum).toFixed(1) + "%";
-          }
-        }
-      }
-    }
-  });
-
-  if(canvasId === 'assetsChart') assetsChart = newChart;
-  if(canvasId === 'regionsChart') regionsChart = newChart;
-}
-
-// ====== 6. 表單邏輯 (維持不變) ======
-function quick(name,symbol,platform){
-  document.getElementById("name").value=name;
-  document.getElementById("symbol").value=symbol;
-  document.getElementById("platform").value=platform;
-}
-
+function quick(n,s){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; }
 function submitTrade(){
-  const name=document.getElementById("name").value.trim();
-  const type=document.getElementById("type").value;
-  const cost=document.getElementById("cost").value;
-
-  if(!name){ show("❌ 名稱不可空白"); return; }
-  if(type==="賣出" && !cost){ show("❌ 賣出必須填成本"); return; }
-
-  show("⏳ 寫入中...");
-  const btn = document.querySelector('button.primary');
-  btn.disabled = true;
-
-  const payload={
-    defaults:{ platform:document.getElementById("platform").value, account:document.getElementById("account").value },
-    trades:[{
-      type:type, name:name, symbol:document.getElementById("symbol").value,
-      price:Number(document.getElementById("price").value||0),
-      qty:Number(document.getElementById("qty").value||0),
-      fee:Number(document.getElementById("fee").value||0),
-      tax:Number(document.getElementById("tax").value||0),
-      cost:Number(cost||0),
-      date:new Date().toLocaleDateString('zh-TW')
-    }]
-  };
-
-  scriptRun
-    .withSuccessHandler(res=>{
-      show("✅ 成功寫入第 "+res.row+" 列");
-      clearForm();
-      btn.disabled = false;
-      isDataLoaded = false; 
-    })
-    .withFailureHandler(err=>{
-      show("❌ "+err.message);
-      btn.disabled = false;
-    })
-    .saveTrades(payload);
+  showMsg("⏳ 交易寫入中...");
+  scriptRun.withSuccessHandler(res => {
+    showMsg("✅ 成功寫入");
+    document.getElementById("name").value = "";
+    document.getElementById("symbol").value = "";
+    document.getElementById("price").value = "";
+    document.getElementById("qty").value = "";
+  }).saveTrades({});
 }
-
-function show(msg){ document.getElementById("msg").innerText=msg; }
-function clearForm(){ ["name","symbol","price","qty","fee","tax","cost"].forEach(id=>{ document.getElementById(id).value=""; }); }
+function showMsg(m){ document.getElementById("msg").innerText = m; }
 </script>
-
 </body>
 </html>
