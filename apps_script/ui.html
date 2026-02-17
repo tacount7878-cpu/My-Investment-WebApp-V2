@@ -1,9 +1,9 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>交易紀錄 V6.46 - 修正版</title>
+<title>交易紀錄 V6.61 - 預覽模式</title>
 
 <!-- 引入 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -69,6 +69,7 @@ button.primary{ width:100%;height:60px; margin-top:24px; border-radius:16px; bac
 button.secondary{ flex:1; height:50px; border-radius:14px; background:rgba(255,255,255,0.1); border:1px solid var(--line); color:white; font-size:15px; font-weight:800; cursor:pointer; transition:0.2s; }
 button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,255,0.5); color:#8bb4ff;}
 
+/* 🤖 AI 視窗樣式 */
 #ai-fab {
   position: fixed; bottom: 30px; right: 20px;
   width: 68px; height: 68px; border-radius: 50%;
@@ -87,16 +88,18 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   box-shadow: 0 30px 80px rgba(0,0,0,0.7);
   z-index: 10000; display: none; flex-direction: column;
   overflow: hidden;
+  touch-action: none; 
 }
 #ai-header { padding: 16px 20px; background: rgba(110, 69, 226, 0.25); display: flex; justify-content: space-between; align-items: center; cursor: move; border-bottom: 1px solid rgba(255,255,255,0.1); }
-#ai-chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+#ai-chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
 .msg { max-width: 85%; padding: 12px 16px; border-radius: 20px; font-size: 15px; line-height: 1.6; }
-.msg-mimi { align-self: flex-start; background: rgba(255,255,255,0.1); color: #e8eefc; }
-.msg-user { align-self: flex-end; background: var(--purple); color: white; }
+.msg-mimi { align-self: flex-start; background: rgba(255,255,255,0.1); color: #e8eefc; border-bottom-left-radius: 4px; }
+.msg-user { align-self: flex-end; background: var(--purple); color: white; border-bottom-right-radius: 4px; }
 #ai-footer { padding: 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1); }
 #ai-input { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid var(--line); border-radius: 14px; color: white; padding: 12px; outline: none; }
-#ai-send { width: 48px; height: 48px; background: var(--purple); border: none; border-radius: 12px; color: white; cursor: pointer; }
+#ai-send { width: 48px; height: 48px; background: var(--purple); border: none; border-radius: 12px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px;}
 
+/* 圖表樣式 */
 .chart-card { background:rgba(0,0,0,0.2); border-radius:14px; padding:15px; margin-bottom:16px; border:1px solid var(--line);}
 .chart-title { font-size:16px; font-weight:800; margin-bottom:12px; text-align:center; color:var(--txt);}
 .chart-container{ position:relative; height:240px; width:100%; }
@@ -108,28 +111,34 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 .final-networth { background: linear-gradient(135deg, rgba(52,199,89,0.15), rgba(52,199,89,0.05)); border: 1px solid rgba(52,199,89,0.4); border-radius: 16px; padding: 20px; text-align: center; margin-top: 20px; }
 .final-val { color: #34c759; font-size: 36px; font-weight: 900; }
 
-.update-indicator { font-size:12px; color:var(--green); text-align:center; margin-bottom:15px; font-weight:700; opacity:0; transition:opacity 0.3s;}
+#loading-overlay-dash, #loading-overlay-net { font-size:14px; color:var(--muted); text-align:center; padding:40px 0; }
+.preview-badge { position:fixed; top:10px; left:10px; background:rgba(255,149,0,.2); color:#ff9500; padding:4px 8px; border-radius:6px; font-size:10px; font-weight:bold; border:1px solid rgba(255,149,0,.3); z-index:10001; pointer-events:none; }
 </style>
 </head>
 
 <body>
 
+<div class="preview-badge">PREVIEW MODE</div>
+
+<!-- 🤖 浮動按鈕 -->
 <div id="ai-fab" onclick="toggleAI()">🤖</div>
 
+<!-- 🤖 視窗 -->
 <div id="ai-window">
   <div id="ai-header">
     <div class="ai-title">🤖 咪咪戰情分析</div>
-    <button style="background:none; border:none; color:white; font-size:24px;" onclick="toggleAI()">×</button>
+    <button style="background:none; border:none; color:white; font-size:24px; cursor:pointer;" onclick="toggleAI()">×</button>
   </div>
   <div id="ai-chat-body">
     <div class="msg msg-mimi">嗨，翔翔。😊</div>
   </div>
   <div id="ai-footer">
-    <input type="text" id="ai-input" placeholder="輸入問題..." onkeypress="if(event.keyCode==13) sendChat()">
+    <input type="text" id="ai-input" placeholder="問問大姊姊..." onkeypress="if(event.keyCode==13) sendChat()">
     <button id="ai-send" onclick="sendChat()">➤</button>
   </div>
 </div>
 
+<!-- ================= 視圖 1：輸入表單 ================= -->
 <div id="view-input" class="view active">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('dashboard')">📊 戰情圖表</button>
@@ -196,6 +205,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   </div>
 </div>
 
+<!-- ================= 視圖 2：戰情圖表 ================= -->
 <div id="view-dashboard" class="view">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('input')">🔙 返回</button>
@@ -203,8 +213,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   </div>
   <div class="card">
     <div class="title">戰情儀表板</div>
-    <div id="update-msg-dash" class="update-indicator">✨ 數據已更新</div>
-    <div id="loading-overlay-dash" style="text-align:center; padding:40px;">數據載入中...</div>
+    <div id="loading-overlay-dash">載入中...</div>
     <div id="dashboard-content" style="display:none;">
       <div class="chart-card"><div class="chart-title">資產總淨值 (TWD)</div><div class="chart-container"><canvas id="historyChart"></canvas></div></div>
       <div class="chart-card"><div class="chart-title">持倉佔比 (合併後)</div><div class="chart-container"><canvas id="assetsChart"></canvas></div></div>
@@ -213,6 +222,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   </div>
 </div>
 
+<!-- ================= 視圖 3：即時總資產 ================= -->
 <div id="view-networth" class="view">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('input')">🔙 返回</button>
@@ -220,11 +230,10 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   </div>
   <div class="card">
     <div class="title">💰 即時總資產</div>
-    <div id="update-msg-net" class="update-indicator">✨ 數據已更新</div>
     <div id="networth-content">
       <div class="chart-card">
         <div class="calc-row"><span>📊 投資部位市值</span><span id="val-invest">0</span></div>
-        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return">0%</span></div>
+        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return" style="color:var(--green)">+22.4%</span></div>
         <div class="calc-row"><span>💱 即時匯率 (USD)</span><span id="val-usdrate">32.2</span></div>
       </div>
       <div class="hint" style="margin-top:20px;">輸入目前的帳戶餘額</div>
@@ -239,29 +248,30 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
 <script>
 Chart.register(ChartDataLabels);
-const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
 
-const scriptRun = isGasEnv ? google.script.run : (() => {
-  const mock = {
-    _cb: null, withSuccessHandler: function(cb) { this._cb = cb; return this; },
-    getDashboardData: function(inputs) {
+// 模擬器邏輯
+const scriptRun = (() => {
+  return {
+    withSuccessHandler: function(cb) { this._cb = cb; return this; },
+    getDashboardData: function(i) {
       setTimeout(() => this._cb({
         history: [
             {date:'01/07', val:5350000}, {date:'01/16', val:5580000}, {date:'01/24', val:5320000}, 
-            {date:'01/30', val:5360000}, {date:'02/05', val:5230000}, {date:'02/14', val:5710000}, {date:'02/16', val:5690000}, {date:'02/17', val:5685000}
+            {date:'01/30', val:5360000}, {date:'02/05', val:5230000}, {date:'02/14', val:5710000}, {date:'02/17', val:5685000}
         ],
         assets: [
             {name:'0050', value:2316000}, {name:'2330', value:381085}, {name:'債券(台股)', value:1054130},
-            {name:'VT/VWRA', value:2310949}, {name:'TSLA (特斯拉)', value:379346}, {name:'Google', value:392013}, {name:'Bitcoin', value:232460}
+            {name:'VT/VWRA', value:2310949}, {name:'TSLA', value:379346}, {name:'Google', value:392013}, {name:'Bitcoin', value:232460}
         ],
         regions: [{name:'台股', value:3751215}, {name:'美股', value:801083}, {name:'全球', value:2310949}, {name:'加密', value:232460}],
         investTotal: 7065983, usdRate: 32.2, realizedReturn: 22.4, realizedReturnTwd: 250000
-      }), 500);
+      }), 400);
     },
-    saveTrades: function(p) { setTimeout(() => this._cb({ok:true, row: 88}), 400); },
-    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("模擬：配置已經更新！"), 800); }
+    saveTrades: function(p) { setTimeout(() => { showToast("✅ 模擬寫入成功！"); this._cb({ok:true, row: 99}); }, 500); },
+    callGeminiAnalysis: function(q) {
+      setTimeout(() => this._cb("翔翔乖，大姊姊算好囉。目前的配置中「台股」佔比最高，建議可以多留意美股夜盤的變動喔。晚點姊姊再陪你對帳。😊"), 1000);
+    }
   };
-  return mock;
 })();
 
 let charts = {};
@@ -273,6 +283,7 @@ window.onload = () => {
     if(val) document.getElementById('inp-'+id).value = val;
   });
   refreshDashboard(true);
+  initDraggable();
 };
 
 function switchView(v) {
@@ -284,22 +295,15 @@ function switchView(v) {
 }
 
 function refreshDashboard(isSilent) {
-  const inputs = {
-    cashTwd: document.getElementById('inp-cash-twd').value,
-    settleTwd: document.getElementById('inp-settle-twd').value,
-    cashUsd: document.getElementById('inp-cash-usd').value,
-    loanTwd: document.getElementById('inp-loan-twd').value
-  };
   scriptRun.withSuccessHandler(data => {
     cachedData = data;
     document.getElementById('loading-overlay-dash').style.display = 'none';
     document.getElementById('dashboard-content').style.display = 'block';
     document.getElementById('val-invest').innerText = data.investTotal.toLocaleString();
     document.getElementById('val-usdrate').innerText = data.usdRate.toFixed(2);
-    document.getElementById('val-return').innerText = data.realizedReturn.toFixed(2) + '%';
     calcTotalNetWorth();
     renderCharts();
-  }).getDashboardData(inputs);
+  }).getDashboardData({});
 }
 
 function calcTotalNetWorth() {
@@ -321,50 +325,12 @@ function renderCharts() {
     if(!canvas) return;
     const ctx = canvas.getContext('2d');
     if(charts[id]) charts[id].destroy();
-    
     charts[id] = new Chart(ctx, {
       type: type,
-      data: { 
-          labels, 
-          datasets: [{ 
-              label: '價值',
-              data, 
-              backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E'] : 'rgba(47,123,255,0.2)', 
-              borderColor: '#2f7bff', 
-              fill: true,
-              tension: 0.4,
-              borderWidth: isPie ? 0 : 2
-          }] 
-      },
-      options: { 
-          responsive: true, 
-          maintainAspectRatio: false, 
-          plugins: { 
-              legend: { 
-                  display: isPie, 
-                  position: 'right', 
-                  labels:{ color:'#fff', boxWidth: 10, font: { size: 11 } } 
-              }, 
-              datalabels: { 
-                  display: isPie, 
-                  color: '#fff',
-                  font: { weight: 'bold', size: 10 },
-                  formatter: (v, c) => {
-                      let sum = 0;
-                      c.dataset.data.forEach(x => sum += x);
-                      let perc = (v * 100 / sum).toFixed(1);
-                      return perc > 3 ? perc + '%' : null; // 佔比大於 3% 才顯示，避免重疊
-                  }
-              } 
-          },
-          scales: isPie ? {} : {
-              x: { ticks: { color: '#a9b6d6', font: { size: 10 } } },
-              y: { ticks: { color: '#a9b6d6' } }
-          }
-      }
+      data: { labels, datasets: [{ data, backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E'] : 'rgba(47,123,255,0.2)', borderColor: '#2f7bff', fill: true, tension: 0.4, borderWidth: isPie ? 0 : 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: isPie, position: 'right', labels:{color:'#fff', boxWidth:10} }, datalabels: { display: isPie, color: '#fff', font: { weight: 'bold', size: 10 }, formatter: (v, c) => { let sum = 0; c.dataset.data.forEach(x => sum += x); let perc = (v * 100 / sum).toFixed(1); return perc > 3 ? perc + '%' : null; } } }, scales: isPie ? {} : { x: { ticks: { color: '#a9b6d6', font: { size: 10 } } }, y: { ticks: { color: '#a9b6d6' } } } }
     });
   };
-  
   config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
   config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
   config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
@@ -373,46 +339,66 @@ function renderCharts() {
 function quick(n,s,p){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; document.getElementById('platform').value=p; }
 
 function submitTrade() {
+  const name = document.getElementById('name').value.trim();
   const btn = document.querySelector('button.primary');
-  // ★ 移除強制檢查邏輯，現在名稱可以留空
-  const nameInput = document.getElementById('name');
-  const name = nameInput.value.trim(); 
-
   btn.disabled = true;
-  const payload = {
-    defaults: { platform: document.getElementById('platform').value, account: document.getElementById('account').value },
-    trades: [{
-      type: document.getElementById('type').value, name: name, symbol: document.getElementById('symbol').value,
-      price: Number(document.getElementById('price').value), qty: Number(document.getElementById('qty').value),
-      fee: Number(document.getElementById('fee').value), tax: Number(document.getElementById('tax').value),
-      cost: Number(document.getElementById('cost').value), date: new Date().toLocaleDateString('zh-TW')
-    }]
-  };
-  scriptRun.withSuccessHandler(res => {
-    btn.disabled = false;
-    const msgEl = document.getElementById('msg');
-    msgEl.innerText = "✅ 成功寫入第 " + res.row + " 列";
-    msgEl.className = "toast info";
-    msgEl.style.display = "block";
-    setTimeout(() => { msgEl.style.display = "none"; msgEl.className = "toast"; }, 3000);
-  }).saveTrades(payload);
+  scriptRun.withSuccessHandler(() => { btn.disabled = false; }).saveTrades({});
 }
 
+function showToast(m) { const el = document.getElementById('msg'); el.innerText = m; el.className = "toast info"; setTimeout(() => el.className = "toast", 3000); }
+
 function toggleAI() { const win = document.getElementById('ai-window'); win.style.display = win.style.display === 'flex' ? 'none' : 'flex'; }
+
 function sendChat() {
   const input = document.getElementById('ai-input');
   const text = input.value.trim(); if(!text) return;
   appendMsg(text, 'user'); input.value = '';
-  appendMsg('咪咪思考中...', 'mimi', 'loading-ai');
-  scriptRun.withSuccessHandler(res => {
-    document.getElementById('loading-ai').innerText = res;
-    document.getElementById('loading-ai').id = '';
-  }).callGeminiAnalysis(text, cachedData);
+  const id = 'msg-' + Date.now();
+  appendMsg('...', 'mimi', id);
+  scriptRun.withSuccessHandler(res => { document.getElementById(id).innerText = res; }).callGeminiAnalysis(text);
 }
+
 function appendMsg(t, type, id) {
   const body = document.getElementById('ai-chat-body');
   const div = document.createElement('div'); div.className = 'msg msg-' + type; div.innerText = t; if(id) div.id = id;
   body.appendChild(div); body.scrollTop = body.scrollHeight;
+}
+
+// 🤏 視窗拖曳功能 (支援手機觸控)
+function initDraggable() {
+  const win = document.getElementById('ai-window');
+  const header = document.getElementById('ai-header');
+  let isDragging = false;
+  let startX, startY, initialLeft, initialTop;
+
+  const dragStart = (e) => {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    isDragging = true;
+    const clientX = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
+    startX = clientX; startY = clientY;
+    initialLeft = win.offsetLeft; initialTop = win.offsetTop;
+    if (e.type === 'touchstart') document.body.style.overflow = 'hidden';
+  };
+
+  const dragMove = (e) => {
+    if (!isDragging) return;
+    const clientX = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - startX; const dy = clientY - startY;
+    win.style.left = (initialLeft + dx) + 'px';
+    win.style.top = (initialTop + dy) + 'px';
+    win.style.right = 'auto'; win.style.bottom = 'auto';
+  };
+
+  const dragEnd = () => { isDragging = false; document.body.style.overflow = ''; };
+
+  header.addEventListener('mousedown', dragStart);
+  window.addEventListener('mousemove', dragMove);
+  window.addEventListener('mouseup', dragEnd);
+  header.addEventListener('touchstart', dragStart, { passive: false });
+  window.addEventListener('touchmove', dragMove, { passive: false });
+  window.addEventListener('touchend', dragEnd);
 }
 </script>
 </body>
