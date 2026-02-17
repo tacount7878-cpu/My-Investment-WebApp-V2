@@ -57,7 +57,30 @@ input[type="number"] { -moz-appearance: textfield; }
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
 .chip{ padding:8px 12px;border-radius:999px; background:rgba(47,123,255,.15); border:1px solid rgba(47,123,255,.35); font-size:13px;font-weight:800; cursor:pointer; }
 
-button.primary{ width:100%;height:60px; margin-top:24px; border-radius:16px; background:linear-gradient(180deg,var(--blue),var(--blue2)); border:none;color:white; font-size:18px;font-weight:900; cursor:pointer; }
+/* 🚀 實體感 3D 按鈕 */
+button.primary {
+  width: 100%; height: 60px; margin-top: 24px;
+  border-radius: 16px; border: none;
+  color: white; font-size: 18px; font-weight: 900;
+  cursor: pointer; position: relative;
+  background: linear-gradient(180deg, var(--blue), var(--blue2));
+  box-shadow: 0 6px 0 #103a8a, 0 15px 25px rgba(0,0,0,0.4);
+  transition: all 0.1s;
+  top: 0;
+}
+button.primary:active {
+  top: 6px;
+  box-shadow: 0 0 0 #103a8a, 0 5px 10px rgba(0,0,0,0.3);
+  filter: brightness(1.1);
+}
+button.primary:disabled {
+  top: 6px;
+  box-shadow: none;
+  background: #4a5568;
+  color: #a0aec0;
+  cursor: not-allowed;
+}
+
 .toast{ margin-top:12px;font-weight:800; text-align:center; padding: 10px; border-radius: 8px; display: none; }
 .toast.info { display: block; background: rgba(47,123,255,0.2); color: #8bb4ff; }
 
@@ -122,7 +145,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
     <button style="background:none; border:none; color:white; font-size:24px;" onclick="toggleAI()">×</button>
   </div>
   <div id="ai-chat-body">
-    <div class="msg msg-mimi">主人好！我是咪咪。我已經取消了名稱必填的限制，您可以根據需要留空。😊</div>
+    <div class="msg msg-mimi">嗨，翔翔。😊</div>
   </div>
   <div id="ai-footer">
     <input type="text" id="ai-input" placeholder="輸入問題..." onkeypress="if(event.keyCode==13) sendChat()">
@@ -191,7 +214,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
       <option value="其他">其他</option>
     </select>
 
-    <button class="primary" onclick="submitTrade()">送出交易</button>
+    <button id="submit-btn" class="primary" onclick="submitTrade()">送出交易</button>
     <div id="msg" class="toast"></div>
   </div>
 </div>
@@ -243,23 +266,19 @@ const isGasEnv = typeof google !== 'undefined' && google.script && google.script
 
 const scriptRun = isGasEnv ? google.script.run : (() => {
   const mock = {
-    _cb: null, withSuccessHandler: function(cb) { this._cb = cb; return this; },
+    _cb: null, 
+    withSuccessHandler: function(cb) { this._cb = cb; return this; },
+    withFailureHandler: function() { return this; },
     getDashboardData: function(inputs) {
       setTimeout(() => this._cb({
-        history: [
-            {date:'01/07', val:5350000}, {date:'01/16', val:5580000}, {date:'01/24', val:5320000}, 
-            {date:'01/30', val:5360000}, {date:'02/05', val:5230000}, {date:'02/14', val:5710000}, {date:'02/16', val:5690000}, {date:'02/17', val:5685000}
-        ],
-        assets: [
-            {name:'0050', value:2316000}, {name:'2330', value:381085}, {name:'債券(台股)', value:1054130},
-            {name:'VT/VWRA', value:2310949}, {name:'TSLA (特斯拉)', value:379346}, {name:'Google', value:392013}, {name:'Bitcoin', value:232460}
-        ],
-        regions: [{name:'台股', value:3751215}, {name:'美股', value:801083}, {name:'全球', value:2310949}, {name:'加密', value:232460}],
+        history: [{date:'01/07', val:5350000}, {date:'02/17', val:5685000}],
+        assets: [{name:'模擬持倉', value:2316000}],
+        regions: [{name:'台股', value:3751215}],
         investTotal: 7065983, usdRate: 32.2, realizedReturn: 22.4, realizedReturnTwd: 250000
       }), 500);
     },
-    saveTrades: function(p) { setTimeout(() => this._cb({ok:true, row: 88}), 400); },
-    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("翔翔，大姊姊在幫你看帳喔，等等回你。"), 800); }
+    saveTrades: function(p) { setTimeout(() => this._cb({ok:true, row: 88}), 1000); },
+    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("模擬模式：大姊姊在幫你對帳喔。"), 800); }
   };
   return mock;
 })();
@@ -273,14 +292,13 @@ window.onload = () => {
     if(val) document.getElementById('inp-'+id).value = val;
   });
   refreshDashboard(true);
+  initDraggable();
 };
 
 function switchView(v) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
-  if(v !== 'input') {
-      setTimeout(() => renderCharts(), 100);
-  }
+  if(v !== 'input') setTimeout(() => renderCharts(), 100);
 }
 
 function refreshDashboard(isSilent) {
@@ -292,8 +310,8 @@ function refreshDashboard(isSilent) {
   };
   scriptRun.withSuccessHandler(data => {
     cachedData = data;
-    document.getElementById('loading-overlay-dash').style.display = 'none';
-    document.getElementById('dashboard-content').style.display = 'block';
+    const ov = document.getElementById('loading-overlay-dash'); if(ov) ov.style.display = 'none';
+    const ct = document.getElementById('dashboard-content'); if(ct) ct.style.display = 'block';
     document.getElementById('val-invest').innerText = data.investTotal.toLocaleString();
     document.getElementById('val-usdrate').innerText = data.usdRate.toFixed(2);
     document.getElementById('val-return').innerText = data.realizedReturn.toFixed(2) + '%';
@@ -303,10 +321,10 @@ function refreshDashboard(isSilent) {
 }
 
 function calcTotalNetWorth() {
-  const t = Number(document.getElementById('inp-cash-twd').value || 0);
-  const s = Number(document.getElementById('inp-settle-twd').value || 0);
-  const u = Number(document.getElementById('inp-cash-usd').value || 0);
-  const l = Number(document.getElementById('inp-loan-twd').value || 0);
+  const t = Number(document.getElementById('inp-cash-twd').value || 0),
+        s = Number(document.getElementById('inp-settle-twd').value || 0),
+        u = Number(document.getElementById('inp-cash-usd').value || 0),
+        l = Number(document.getElementById('inp-loan-twd').value || 0);
   localStorage.setItem('wr_cash_twd', t); localStorage.setItem('wr_settle_twd', s); 
   localStorage.setItem('wr_cash_usd', u); localStorage.setItem('wr_loan_twd', l);
   const rate = cachedData ? cachedData.usdRate : 32.2;
@@ -317,54 +335,14 @@ function calcTotalNetWorth() {
 function renderCharts() {
   if(!cachedData) return;
   const config = (id, type, labels, data, isPie) => {
-    const canvas = document.getElementById(id);
-    if(!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if(charts[id]) charts[id].destroy();
-    
+    const canvas = document.getElementById(id); if(!canvas) return;
+    const ctx = canvas.getContext('2d'); if(charts[id]) charts[id].destroy();
     charts[id] = new Chart(ctx, {
       type: type,
-      data: { 
-          labels, 
-          datasets: [{ 
-              label: '價值',
-              data, 
-              backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E'] : 'rgba(47,123,255,0.2)', 
-              borderColor: '#2f7bff', 
-              fill: true,
-              tension: 0.4,
-              borderWidth: isPie ? 0 : 2
-          }] 
-      },
-      options: { 
-          responsive: true, 
-          maintainAspectRatio: false, 
-          plugins: { 
-              legend: { 
-                  display: isPie, 
-                  position: 'right', 
-                  labels:{ color:'#fff', boxWidth: 10, font: { size: 11 } } 
-              }, 
-              datalabels: { 
-                  display: isPie, 
-                  color: '#fff',
-                  font: { weight: 'bold', size: 10 },
-                  formatter: (v, c) => {
-                      let sum = 0;
-                      c.dataset.data.forEach(x => sum += x);
-                      let perc = (v * 100 / sum).toFixed(1);
-                      return perc > 3 ? perc + '%' : null; 
-                  }
-              } 
-          },
-          scales: isPie ? {} : {
-              x: { ticks: { color: '#a9b6d6', font: { size: 10 } } },
-              y: { ticks: { color: '#a9b6d6' } }
-          }
-      }
+      data: { labels, datasets: [{ label:'價值', data, backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA'] : 'rgba(47,123,255,0.2)', borderColor:'#2f7bff', fill:true, tension:0.4, borderWidth: isPie ? 0 : 2 }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:isPie, position:'right', labels:{color:'#fff', boxWidth:10}}, datalabels:{display:isPie, color:'#fff', font:{weight:'bold', size:10}, formatter:(v,c)=>{let sum=0; c.dataset.data.forEach(x=>sum+=x); let perc=(v*100/sum).toFixed(1); return perc>3?perc+'%':null;}} }, scales: isPie?{}:{x:{ticks:{color:'#a9b6d6'}},y:{ticks:{color:'#a9b6d6'}}} }
     });
   };
-  
   config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
   config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
   config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
@@ -372,46 +350,80 @@ function renderCharts() {
 
 function quick(n,s,p){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; document.getElementById('platform').value=p; }
 
+// 🚀 核心邏輯：送出交易並觸發動畫
 function submitTrade() {
-  const btn = document.querySelector('button.primary');
-  const nameInput = document.getElementById('name');
-  const name = nameInput.value.trim(); 
+  const btn = document.getElementById('submit-btn');
+  const msgEl = document.getElementById('msg');
+  const originalText = "送出交易";
 
+  // 1. 物理按下與狀態切換
   btn.disabled = true;
+  btn.innerText = "⏳ 寫入中...";
+  msgEl.innerText = "⏳ 正在努力寫入中...";
+  msgEl.className = "toast info";
+  msgEl.style.display = "block";
+
   const payload = {
     defaults: { platform: document.getElementById('platform').value, account: document.getElementById('account').value },
     trades: [{
-      type: document.getElementById('type').value, name: name, symbol: document.getElementById('symbol').value,
+      type: document.getElementById('type').value, name: document.getElementById('name').value.trim(), symbol: document.getElementById('symbol').value,
       price: Number(document.getElementById('price').value), qty: Number(document.getElementById('qty').value),
       fee: Number(document.getElementById('fee').value), tax: Number(document.getElementById('tax').value),
       cost: Number(document.getElementById('cost').value), date: new Date().toLocaleDateString('zh-TW')
     }]
   };
+
   scriptRun.withSuccessHandler(res => {
     btn.disabled = false;
-    const msgEl = document.getElementById('msg');
+    btn.innerText = originalText;
     msgEl.innerText = "✅ 成功寫入第 " + res.row + " 列";
-    msgEl.className = "toast info";
-    msgEl.style.display = "block";
-    setTimeout(() => { msgEl.style.display = "none"; msgEl.className = "toast"; }, 3000);
+    setTimeout(() => { msgEl.style.display = "none"; }, 3000);
   }).saveTrades(payload);
 }
 
 function toggleAI() { const win = document.getElementById('ai-window'); win.style.display = win.style.display === 'flex' ? 'none' : 'flex'; }
 function sendChat() {
-  const input = document.getElementById('ai-input');
-  const text = input.value.trim(); if(!text) return;
+  const input = document.getElementById('ai-input'), text = input.value.trim(); if(!text) return;
   appendMsg(text, 'user'); input.value = '';
-  appendMsg('咪咪思考中...', 'mimi', 'loading-ai');
-  scriptRun.withSuccessHandler(res => {
-    document.getElementById('loading-ai').innerText = res;
-    document.getElementById('loading-ai').id = '';
-  }).callGeminiAnalysis(text, cachedData);
+  const id = 'msg-' + Date.now(); appendMsg('我看一下喔! 等一下', 'mimi', id);
+  scriptRun.withSuccessHandler(res => { document.getElementById(id).innerText = res; }).callGeminiAnalysis(text, cachedData);
 }
 function appendMsg(t, type, id) {
-  const body = document.getElementById('ai-chat-body');
-  const div = document.createElement('div'); div.className = 'msg msg-' + type; div.innerText = t; if(id) div.id = id;
+  const body = document.getElementById('ai-chat-body'), div = document.createElement('div'); div.className = 'msg msg-' + type; div.innerText = t; if(id) div.id = id;
   body.appendChild(div); body.scrollTop = body.scrollHeight;
+}
+
+// 🤏 穩定版視窗拖曳功能
+function initDraggable() {
+  const win = document.getElementById('ai-window');
+  const header = document.getElementById('ai-header');
+  let isDragging = false, offsetX = 0, offsetY = 0;
+
+  function start(e) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    isDragging = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    offsetX = clientX - win.offsetLeft;
+    offsetY = clientY - win.offsetTop;
+    if (e.touches) e.preventDefault(); // 防止手機滾動
+  }
+  function move(e) {
+    if (!isDragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    win.style.left = (clientX - offsetX) + 'px';
+    win.style.top  = (clientY - offsetY) + 'px';
+    win.style.right = 'auto'; win.style.bottom = 'auto';
+  }
+  function end() { isDragging = false; }
+
+  header.addEventListener('mousedown', start);
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  header.addEventListener('touchstart', start, { passive:false });
+  window.addEventListener('touchmove', move, { passive:false });
+  window.addEventListener('touchend', end);
 }
 </script>
 </body>
