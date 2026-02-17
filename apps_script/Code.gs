@@ -1,9 +1,12 @@
 /**
- * 投資戰情室 V6.56 - 穩定基底 + Gemini 2.0 Flash Lite (成本優化版)
+ * 投資戰情室 V6.58 - 最終修正版
  * 修正項目：
- * 1. 修正模型名稱：改為 gemini-2.0-flash-lite (符合您的 ListModels 查詢結果)。
- * 2. 成本優化：選用 Lite 系列模型，提供極高性價比且穩定的對話體驗。
- * 3. 維持所有核心記帳回寫邏輯 (A2, C2, E2, G2, I2)。
+ * 1. 修正買賣欄位：根據交易類型自動判斷寫入「買入」或「賣出」欄位，不再錯位。
+ * 2. 補全缺失欄位：正確寫入「平台」、「帳戶類型」、「幣別」。
+ * 3. 幣別邏輯：根據帳戶類型關鍵字自動判斷 USD/TWD。
+ * 4. 修正成本欄位：精準對接「成本(原幣)※賣出需填」標題，解決寫入空白問題。
+ * 5. 寫入位置：從第 86 列開始尋找第一個空白列。
+ * 6. AI 助理：整合 Gemini 2.0 Flash Lite 提供資產分析。
  */
 
 // 🔥 唯一正確的 Gemini API Key
@@ -19,71 +22,125 @@ const CONFIG = {
 };
 
 /* ================================
-   0️⃣ 強制授權
-================================ */
-function forceAuth() {
-  UrlFetchApp.fetch("https://www.google.com");
-  Logger.log("授權完成");
-}
-
-/* ================================
    1️⃣ 網頁入口
 ================================ */
 function doGet() {
-  const possibleNames = ["ui", "ui.html", "Index", "apps_script/ui"];
-  for (let name of possibleNames) {
-    try {
-      return HtmlService.createHtmlOutputFromFile(name)
-        .setTitle("投資戰情室")
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
-    } catch (e) {}
-  }
-  return HtmlService.createHtmlOutput("找不到網頁檔案，請確保檔案名稱為 ui");
+  // 嘗試從名為 "ui" 的 HTML 檔案建立輸出
+  return HtmlService.createHtmlOutputFromFile("ui")
+    .setTitle("投資戰情室")
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
 /* ================================
-   2️⃣ 手動更新市價 (Yahoo)
+   2️⃣ 交易寫入核心
 ================================ */
-function updateMarketData() {
-  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-  const sh = ss.getSheetByName(CONFIG.SHEET_DETAILS);
-  if (!sh) return;
-
-  const headerRow = 5; 
-  const lastRow = sh.getLastRow();
-  if (lastRow <= headerRow) return;
-
-  const headers = sh.getRange(headerRow, 1, 1, sh.getLastColumn()).getValues()[0];
-  const symbolCol = headers.indexOf("Yahoo代號(Symbol)") + 1;
-  const priceCol = headers.indexOf("目前市價") + 1;
-
-  if (symbolCol <= 0 || priceCol <= 0) return;
-
-  const data = sh.getRange(headerRow + 1, symbolCol, lastRow - headerRow, 1).getValues();
-  const prices = data.map(row => {
-    const symbol = String(row[0] || "").trim();
-    return symbol ? [fetchYahooPrice(symbol)] : [""];
-  });
-
-  sh.getRange(headerRow + 1, priceCol, prices.length, 1).setValues(prices);
-}
-
-function fetchYahooPrice(symbol) {
+function saveTrades(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000); // 鎖定 30 秒防止寫入衝突
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`;
-    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    const json = JSON.parse(res.getContentText());
-    if (json.chart && json.chart.result && json.chart.result.length > 0) {
-      return json.chart.result[0].meta.regularMarketPrice;
-    }
-    return "";
+    const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sh = ss.getSheetByName(CONFIG.SHEET_LOGS);
+    if (!sh) throw new Error("找不到買賣紀錄分頁");
+
+    const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h || "").trim());
+    const getCol = (name) => headers.indexOf(name);
+    
+    // 找出第一行空白列 (從第 86 列開始找)
+    const startRow = findFirstEmptyRow_(sh);
+    
+    // 建立要寫入的資料行
+    const rows = payload.trades.map((t, i) => buildFormulaRow_(headers, payload.defaults || {}, t, startRow + i, getCol));
+    
+    // 寫入試算表
+    sh.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
+    SpreadsheetApp.flush();
+    
+    return { ok: true, row: startRow };
   } catch (e) {
-    return "";
+    return { ok: false, error: e.message };
+  } finally {
+    lock.releaseLock();
   }
 }
 
+/**
+ * 建立整行資料，精準對接 A-R 欄位
+ */
+function buildFormulaRow_(headers, defaults, t, r, getCol) {
+  const row = new Array(headers.length).fill("");
+  const setVal = (name, val) => { 
+    const idx = getCol(name); 
+    if (idx !== -1) row[idx] = val; 
+  };
+
+  // --- A-E 欄：基礎設定 ---
+  setVal("日期", t.date || new Date());
+  setVal("交易類型", t.type); // 「買入」或「賣出」
+  setVal("平台", defaults.platform || "");
+  setVal("帳戶類型", defaults.account || "");
+  
+  // 幣別自動判斷：若帳戶名稱含 USD 則填 USD，否則 TWD
+  let currency = "TWD";
+  if (defaults.account && defaults.account.toUpperCase().includes("USD")) {
+    currency = "USD";
+  }
+  setVal("幣別", currency);
+
+  // --- F-G 欄：標的資訊 ---
+  setVal("名稱", t.name);
+  setVal("股票代號", t.symbol);
+
+  // --- I-L 欄：買賣價格分流 ---
+  if (t.type.includes("買")) {
+    setVal("買入價格", Number(t.price || 0));
+    setVal("買入股數", Number(t.qty || 0));
+    setVal("賣出價格", ""); 
+    setVal("賣出股數", "");
+  } else {
+    setVal("賣出價格", Number(t.price || 0));
+    setVal("賣出股數", Number(t.qty || 0));
+    setVal("買入價格", ""); 
+    setVal("買入股數", "");
+  }
+
+  // --- M-N 欄：費用 ---
+  setVal("手續費", Number(t.fee || 0));
+  setVal("交易稅", Number(t.tax || 0));
+  
+  // --- O 欄：成本 (修正點：對接完整標題名稱) ---
+  if (t.cost !== "" && t.cost !== null && t.cost !== undefined) {
+    setVal("成本(原幣)※賣出需填", Number(t.cost));
+  }
+
+  setVal("狀態", "已完成");
+
+  // --- 帶入試算表公式欄位 (P, Q, R 等) ---
+  setVal("價金(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), I${r}*J${r}, K${r}*L${r})`);
+  setVal("應收付(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), P${r}-M${r}-N${r}, P${r}+M${r}+N${r})`);
+  setVal("損益(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), Q${r}-O${r}, "")`);
+  setVal("報酬率", `=IF(AND(ISNUMBER(R${r}), O${r}<>0), R${r}/O${r}, "")`);
+  
+  // 台幣轉換公式 (假設匯率在 H 欄)
+  setVal("成本(TWD)", `=IF(O${r}<>"", O${r}*IF(H${r}="",1,H${r}), "")`);
+  setVal("應收付(TWD)", `=Q${r}*IF(H${r}="",1,H${r})`);
+  setVal("損益(TWD)", `=IF(R${r}<>"", R${r}*IF(H${r}="",1,H${r}), "")`);
+
+  return row;
+}
+
+function findFirstEmptyRow_(sh) {
+  const START_ROW = 86; // 從第 86 列開始找空白
+  const lastRow = sh.getLastRow();
+  if (lastRow < START_ROW) return START_ROW;
+  const values = sh.getRange(START_ROW, 1, Math.max(1, lastRow - START_ROW + 1), 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (!values[i][0]) return START_ROW + i;
+  }
+  return lastRow + 1;
+}
+
 /* ================================
-   3️⃣ Dashboard 核心邏輯
+   3️⃣ Dashboard 數據讀取
 ================================ */
 function getDashboardData(inputs, isManualUpdate) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
@@ -91,10 +148,8 @@ function getDashboardData(inputs, isManualUpdate) {
   let freshUsdRate = 32.2; 
 
   if (isManualUpdate === true) {
-    try { updateMarketData(); } catch (e) {}
     const fetchedRate = fetchYahooPrice("USDTWD=X");
     if (fetchedRate && !isNaN(fetchedRate)) freshUsdRate = Number(fetchedRate);
-
     if (detailSh) {
       detailSh.getRange("A2").setValue(freshUsdRate);
       if (inputs) {
@@ -109,13 +164,13 @@ function getDashboardData(inputs, isManualUpdate) {
     freshUsdRate = Number(detailSh.getRange("A2").getValue()) || 32.2;
   }
 
+  // 讀取資產佔比
   const assetSh = ss.getSheetByName(CONFIG.SHEET_ASSETS);
   let investTotal = 0, assets = [];
   if (assetSh && assetSh.getLastRow() >= 2) {
     const headers = assetSh.getRange(1, 1, 1, assetSh.getLastColumn()).getValues()[0];
     const valueCol = headers.indexOf("市值(TWD)") + 1;
     let nameCol = headers.indexOf("合併鍵(GroupKey)") + 1 || headers.indexOf("標的名稱") + 1;
-
     if (valueCol > 0 && nameCol > 0) {
       const vals = assetSh.getRange(2, valueCol, assetSh.getLastRow() - 1, 1).getValues();
       const names = assetSh.getRange(2, nameCol, assetSh.getLastRow() - 1, 1).getValues();
@@ -130,26 +185,8 @@ function getDashboardData(inputs, isManualUpdate) {
     }
   }
 
-  let currentTotalNetWorth = investTotal;
-  if (detailSh) {
-    currentTotalNetWorth += Number(detailSh.getRange("C2").getValue() || 0) +
-                            Number(detailSh.getRange("E2").getValue() || 0) +
-                            (Number(detailSh.getRange("G2").getValue() || 0) * freshUsdRate) -
-                            Number(detailSh.getRange("I2").getValue() || 0);
-  }
-
+  // 讀取歷史數據
   const histSh = ss.getSheetByName(CONFIG.SHEET_HISTORY);
-  if (isManualUpdate === true && histSh) {
-    const now = new Date(), lastRow = histSh.getLastRow();
-    let isSameDay = false;
-    if (lastRow >= 2) {
-      const lastDate = histSh.getRange(lastRow, 1).getValue();
-      if (lastDate instanceof Date && Utilities.formatDate(now, "GMT+8", "yyyyMMdd") === Utilities.formatDate(lastDate, "GMT+8", "yyyyMMdd")) isSameDay = true;
-    }
-    if (isSameDay) histSh.getRange(lastRow, 2).setValue(currentTotalNetWorth);
-    else histSh.appendRow([now, currentTotalNetWorth]);
-  }
-
   let history = [];
   if (histSh && histSh.getLastRow() >= 2) {
     history = histSh.getRange(2, 1, histSh.getLastRow() - 1, 2).getValues()
@@ -157,6 +194,7 @@ function getDashboardData(inputs, isManualUpdate) {
       .map(r => ({ date: r[0] instanceof Date ? Utilities.formatDate(r[0], "GMT+8", "MM/dd") : String(r[0]), val: parseNum_(r[1]) }));
   }
 
+  // 讀取地區分佈
   const regionSh = ss.getSheetByName(CONFIG.SHEET_REGIONS);
   let regions = [];
   if (regionSh && regionSh.getLastRow() >= 2) {
@@ -164,6 +202,7 @@ function getDashboardData(inputs, isManualUpdate) {
       .map(r => ({ name: String(r[0] || "").trim(), value: parseNum_(r[1]) })).filter(r => r.value > 0);
   }
 
+  // 讀取摘要數據
   const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
   let realizedReturn = 0, realizedReturnTwd = 0;
   if (logSh) {
@@ -179,58 +218,29 @@ function getDashboardData(inputs, isManualUpdate) {
 }
 
 /* ================================
-   4️⃣ 對話式咪咪：AI 分析邏輯 (Gemini 2.0 Flash Lite)
+   4️⃣ AI 助理分析 (Gemini 2.0 Flash Lite)
 ================================ */
 function callGeminiAnalysis(userQuery) {
-  if (!GEMINI_API_KEY) return "⚠️ 請先在 Code.gs 中設定 API Key";
-
-  // 取得最新資產數據
   const data = getDashboardData(null, false);
   const assetStr = data.assets.map(a => `${a.name}(${Math.round(a.value/10000)}萬)`).join("、");
-  
-  const prompt = `
-    你是一位專業、毒舌但熱心的私人財富顧問「咪咪」。
-    總市值：${Math.round(data.investTotal).toLocaleString()} TWD
-    已實現損益：${Math.round(data.realizedReturnTwd).toLocaleString()} TWD
-    主要持倉：${assetStr}
-    即時匯率：${data.usdRate}
-    主人問題：${userQuery}
-    回答150字內，幽默直接。直接回文字，不要使用 Markdown。
-  `;
-
-  /**
-   * 🔥 修改點：更換為 gemini-2.0-flash-lite
-   * 使用 v1beta 正確路徑，提供穩定且大量的低成本服務。
-   */
+  const prompt = `你是一位專業私人財富顧問「咪咪」。總市值：${Math.round(data.investTotal).toLocaleString()} TWD，持倉：${assetStr}。回答主人問題：${userQuery}。回答150字內，幽默直接。直接回文字。`;
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=" + GEMINI_API_KEY;
-  
-  const payload = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }]
-  };
-
   try {
-    const response = UrlFetchApp.fetch(url, {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
-    
-    const json = JSON.parse(response.getContentText());
-    
-    // 錯誤診斷
-    if (json.error) return "AI 錯誤: " + json.error.message;
-    
-    return json.candidates?.[0]?.content?.parts?.[0]?.text || "咪咪今天罷工中 😼";
-  } catch (e) {
-    return "連線失敗：" + e.message;
-  }
+    const response = UrlFetchApp.fetch(url, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }) });
+    return JSON.parse(response.getContentText()).candidates?.[0]?.content?.parts?.[0]?.text || "咪咪今天不想說話 😼";
+  } catch (e) { return "連線失敗：" + e.message; }
+}
+
+function fetchYahooPrice(symbol) {
+  try {
+    const res = UrlFetchApp.fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d`, { muteHttpExceptions: true });
+    const json = JSON.parse(res.getContentText());
+    return json.chart?.result?.[0]?.meta?.regularMarketPrice || "";
+  } catch (e) { return ""; }
 }
 
 function parseNum_(val) {
-  if (val === "" || val === null || val === undefined) return 0;
+  if (!val) return 0;
   if (typeof val === "number") return val;
   return Number(String(val).replace(/,/g, "")) || 0;
 }
-
-function saveTrades(p) { return { ok: true }; } // 預留擴充

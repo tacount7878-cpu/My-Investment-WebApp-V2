@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>交易紀錄 V6.46</title>
+<title>交易紀錄 V6.46 - 修正版</title>
 
 <!-- 引入 Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -38,22 +38,28 @@ body{
   border-radius:var(--radius);
   box-shadow:var(--shadow);
   padding:20px;
+  margin-bottom: 80px;
 }
 .title{font-size:22px;font-weight:900;margin-bottom:10px;}
-.hint{color:var(--muted);font-size:14px;margin:6px 0;}
+.hint{color:var(--muted);font-size:14px;margin:12px 0 6px 0;}
 .bigInput{
   width:100%;height:60px;font-size:20px;font-weight:800;
   background:rgba(0,0,0,.25);color:white;
   border:1px solid var(--line);
   border-radius:14px;padding:0 14px;
 }
-.bigInput:focus{ border-color:var(--blue); outline:none; }
+.bigInput:focus{ border-color:var(--blue); outline:none; box-shadow:0 0 0 4px rgba(47,123,255,.2); }
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
 
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
 .chip{ padding:8px 12px;border-radius:999px; background:rgba(47,123,255,.15); border:1px solid rgba(47,123,255,.35); font-size:13px;font-weight:800; cursor:pointer; }
 
-button.primary{ width:100%;height:60px; margin-top:16px; border-radius:16px; background:linear-gradient(180deg,var(--blue),var(--blue2)); border:none;color:white; font-size:18px;font-weight:900; cursor:pointer; }
-.toast{ margin-top:12px;font-weight:800; text-align:center; }
+button.primary{ width:100%;height:60px; margin-top:24px; border-radius:16px; background:linear-gradient(180deg,var(--blue),var(--blue2)); border:none;color:white; font-size:18px;font-weight:900; cursor:pointer; }
+.toast{ margin-top:12px;font-weight:800; text-align:center; padding: 10px; border-radius: 8px; display: none; }
+.toast.info { display: block; background: rgba(47,123,255,0.2); color: #8bb4ff; }
 
 .view { display: none; animation: fadeIn 0.3s ease; }
 .view.active { display: block; }
@@ -63,7 +69,6 @@ button.primary{ width:100%;height:60px; margin-top:16px; border-radius:16px; bac
 button.secondary{ flex:1; height:50px; border-radius:14px; background:rgba(255,255,255,0.1); border:1px solid var(--line); color:white; font-size:15px; font-weight:800; cursor:pointer; transition:0.2s; }
 button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,255,0.5); color:#8bb4ff;}
 
-/* 🤖 浮動啟動按鈕 - 確保 z-index 足夠高 */
 #ai-fab {
   position: fixed; bottom: 30px; right: 20px;
   width: 68px; height: 68px; border-radius: 50%;
@@ -71,11 +76,8 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   box-shadow: 0 10px 30px rgba(110, 69, 226, 0.6);
   display: flex; align-items: center; justify-content: center;
   font-size: 32px; cursor: pointer; z-index: 9999;
-  transition: transform 0.2s, background 0.3s;
 }
-#ai-fab:active { transform: scale(0.9); }
 
-/* 🤖 浮動對話視窗 */
 #ai-window {
   position: fixed; top: 15%; left: 5%;
   width: 90%; max-width: 400px; height: 500px;
@@ -84,68 +86,50 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   border-radius: 28px; border: 1px solid rgba(110, 69, 226, 0.4);
   box-shadow: 0 30px 80px rgba(0,0,0,0.7);
   z-index: 10000; display: none; flex-direction: column;
-  overflow: hidden; touch-action: none;
+  overflow: hidden;
 }
-#ai-header {
-  padding: 16px 20px; background: rgba(110, 69, 226, 0.25);
-  display: flex; justify-content: space-between; align-items: center;
-  cursor: move; border-bottom: 1px solid rgba(255,255,255,0.1);
-  position: relative;
-}
-.ai-title { font-weight: 900; color: #b392ff; display: flex; align-items: center; gap: 8px; font-size: 18px;}
-.ai-drag-handle { width: 40px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; position: absolute; left: 50%; top: 6px; transform: translateX(-50%); }
+#ai-header { padding: 16px 20px; background: rgba(110, 69, 226, 0.25); display: flex; justify-content: space-between; align-items: center; cursor: move; border-bottom: 1px solid rgba(255,255,255,0.1); }
+#ai-chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.msg { max-width: 85%; padding: 12px 16px; border-radius: 20px; font-size: 15px; line-height: 1.6; }
+.msg-mimi { align-self: flex-start; background: rgba(255,255,255,0.1); color: #e8eefc; }
+.msg-user { align-self: flex-end; background: var(--purple); color: white; }
+#ai-footer { padding: 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1); }
+#ai-input { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid var(--line); border-radius: 14px; color: white; padding: 12px; outline: none; }
+#ai-send { width: 48px; height: 48px; background: var(--purple); border: none; border-radius: 12px; color: white; cursor: pointer; }
 
-#ai-chat-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
-.msg { max-width: 85%; padding: 12px 16px; border-radius: 20px; font-size: 15px; line-height: 1.6; position: relative; }
-.msg-mimi { align-self: flex-start; background: rgba(255,255,255,0.1); color: #e8eefc; border-bottom-left-radius: 4px; }
-.msg-user { align-self: flex-end; background: var(--purple); color: white; border-bottom-right-radius: 4px; }
-
-#ai-footer { padding: 15px; display: flex; gap: 10px; border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); }
-#ai-input { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid var(--line); border-radius: 14px; color: white; padding: 12px; outline: none; font-size: 16px;}
-#ai-send { width: 48px; height: 48px; background: var(--purple); border: none; border-radius: 12px; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px;}
-
-/* 圖表專屬樣式 */
 .chart-card { background:rgba(0,0,0,0.2); border-radius:14px; padding:15px; margin-bottom:16px; border:1px solid var(--line);}
 .chart-title { font-size:16px; font-weight:800; margin-bottom:12px; text-align:center; color:var(--txt);}
 .chart-container{ position:relative; height:240px; width:100%; }
 
 .calc-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line); }
-.calc-label { font-size:15px; color:var(--muted); font-weight:700;}
 .calc-value { font-size:18px; font-weight:900; color:white; }
 .calc-input { width:140px; height:40px; font-size:18px; font-weight:800; text-align:right; background:rgba(0,0,0,0.4); border:1px solid var(--line); border-radius:8px; color:white; padding:0 10px;}
 
 .final-networth { background: linear-gradient(135deg, rgba(52,199,89,0.15), rgba(52,199,89,0.05)); border: 1px solid rgba(52,199,89,0.4); border-radius: 16px; padding: 20px; text-align: center; margin-top: 20px; }
-.final-val { color: #34c759; font-size: 36px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.final-val { color: #34c759; font-size: 36px; font-weight: 900; }
 
-#loading-overlay-dash, #loading-overlay-net { font-size:14px; color:var(--muted); text-align:center; padding:40px 0; }
 .update-indicator { font-size:12px; color:var(--green); text-align:center; margin-bottom:15px; font-weight:700; opacity:0; transition:opacity 0.3s;}
 </style>
 </head>
 
 <body>
 
-<!-- 🤖 浮動按鈕 (始終在最上層) -->
 <div id="ai-fab" onclick="toggleAI()">🤖</div>
 
-<!-- 🤖 浮動對話視窗 -->
 <div id="ai-window">
   <div id="ai-header">
-    <div class="ai-drag-handle"></div>
     <div class="ai-title">🤖 咪咪戰情分析</div>
-    <button style="background:none; border:none; color:white; font-size:24px; cursor:pointer;" onclick="toggleAI()">×</button>
+    <button style="background:none; border:none; color:white; font-size:24px;" onclick="toggleAI()">×</button>
   </div>
   <div id="ai-chat-body">
-    <div class="msg msg-mimi">主人好！我是咪咪。今天需要我幫您分析資產佈局嗎？😊</div>
+    <div class="msg msg-mimi">主人好！我是咪咪。我已經取消了名稱必填的限制，您可以根據需要留空。😊</div>
   </div>
   <div id="ai-footer">
-    <input type="text" id="ai-input" placeholder="問問題，例如：目前的持倉平衡嗎？" onkeypress="if(event.keyCode==13) sendChat()">
+    <input type="text" id="ai-input" placeholder="輸入問題..." onkeypress="if(event.keyCode==13) sendChat()">
     <button id="ai-send" onclick="sendChat()">➤</button>
   </div>
 </div>
 
-<div id="env-tag" style="position:fixed; top:10px; right:10px; font-size:10px; opacity:0.3;">V6.46 Preview</div>
-
-<!-- ================= 視圖 1：輸入表單 ================= -->
 <div id="view-input" class="view active">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('dashboard')">📊 戰情圖表</button>
@@ -154,27 +138,64 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
   <div class="card">
     <div class="title">交易紀錄</div>
+    
+    <div class="hint">交易類型</div>
+    <select id="type" class="bigInput">
+      <option value="買入">買入</option>
+      <option value="賣出">賣出</option>
+    </select>
+
     <div class="hint">標的名稱</div>
     <input id="name" class="bigInput" placeholder="例如：富邦台50">
+
     <div class="hint">股票代號</div>
     <input id="symbol" class="bigInput" placeholder="例如：006208.TW">
+
+    <div class="hint">常用快選</div>
     <div class="chips">
-      <div class="chip" onclick="quick('0050','0050.TW')">0050</div>
-      <div class="chip" onclick="quick('2330','2330.TW')">2330</div>
-      <div class="chip" onclick="quick('VT/VWRA','VT')">VT</div>
-      <div class="chip" onclick="quick('Tesla','TSLA')">Tesla</div>
-      <div class="chip" onclick="quick('Bitcoin','BTC-USD')">比特幣</div>
+      <div class="chip" onclick="quick('富邦台50','006208.TW','元大(台股)')">富邦台50</div>
+      <div class="chip" onclick="quick('台積電','2330.TW','元大(台股)')">台積電</div>
+      <div class="chip" onclick="quick('VWRA','VWRA.L','IBKR')">VWRA</div>
+      <div class="chip" onclick="quick('TSLA(FT)','TSLA','Firstrade(FT)')">TSLA(FT)</div>
+      <div class="chip" onclick="quick('比特幣','BTC-USD','錢包')">比特幣</div>
     </div>
+
     <div class="hint">價格</div>
     <input id="price" class="bigInput" type="number" step="any" inputmode="decimal">
+
     <div class="hint">股數</div>
     <input id="qty" class="bigInput" type="number" step="any" inputmode="decimal">
+
+    <div class="hint">手續費</div>
+    <input id="fee" class="bigInput" type="number" step="any" placeholder="未填自動 0" inputmode="decimal">
+
+    <div class="hint">交易稅</div>
+    <input id="tax" class="bigInput" type="number" step="any" placeholder="未填自動 0" inputmode="decimal">
+
+    <div class="hint">成本（賣出必填）</div>
+    <input id="cost" class="bigInput" type="number" step="any" inputmode="decimal">
+
+    <div class="hint">平台</div>
+    <select id="platform" class="bigInput">
+      <option value="元大(台股)">元大(台股)</option>
+      <option value="元大複委託(美股)">元大複委託(美股)</option>
+      <option value="Firstrade(FT)">Firstrade(FT)</option>
+      <option value="IBKR">IBKR</option>
+      <option value="錢包">錢包</option>
+    </select>
+
+    <div class="hint">帳戶類型</div>
+    <select id="account" class="bigInput">
+      <option value="TWD帳戶">TWD帳戶</option>
+      <option value="USD外幣帳戶">USD外幣帳戶</option>
+      <option value="其他">其他</option>
+    </select>
+
     <button class="primary" onclick="submitTrade()">送出交易</button>
     <div id="msg" class="toast"></div>
   </div>
 </div>
 
-<!-- ================= 視圖 2：圖表儀表板 ================= -->
 <div id="view-dashboard" class="view">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('input')">🔙 返回</button>
@@ -183,7 +204,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   <div class="card">
     <div class="title">戰情儀表板</div>
     <div id="update-msg-dash" class="update-indicator">✨ 數據已更新</div>
-    <div id="loading-overlay-dash">數據載入中...</div>
+    <div id="loading-overlay-dash" style="text-align:center; padding:40px;">數據載入中...</div>
     <div id="dashboard-content" style="display:none;">
       <div class="chart-card"><div class="chart-title">資產總淨值 (TWD)</div><div class="chart-container"><canvas id="historyChart"></canvas></div></div>
       <div class="chart-card"><div class="chart-title">持倉佔比 (合併後)</div><div class="chart-container"><canvas id="assetsChart"></canvas></div></div>
@@ -192,7 +213,6 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   </div>
 </div>
 
-<!-- ================= 視圖 3：即時總資產 ================= -->
 <div id="view-networth" class="view">
   <div class="btn-group">
     <button class="secondary" onclick="switchView('input')">🔙 返回</button>
@@ -201,20 +221,18 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
   <div class="card">
     <div class="title">💰 即時總資產</div>
     <div id="update-msg-net" class="update-indicator">✨ 數據已更新</div>
-    <div id="loading-overlay-net">載入中...</div>
-    <div id="networth-content" style="display:none;">
-      <div class="chart-card" style="border-color:rgba(47,123,255,0.3);">
-        <div class="calc-row"><span>📊 投資部位總市值</span><span id="val-invest">0</span></div>
-        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return" style="color:var(--green);">0.00%</span></div>
-        <div class="calc-row"><span>💵 已實現總損益 (TWD)</span><span id="val-realized-twd" style="color:var(--green);">0</span></div>
-        <div class="calc-row" style="border:none;"><span>💱 即時匯率 (USD/TWD)</span><span id="val-usdrate">31.41</span></div>
+    <div id="networth-content">
+      <div class="chart-card">
+        <div class="calc-row"><span>📊 投資部位市值</span><span id="val-invest">0</span></div>
+        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return">0%</span></div>
+        <div class="calc-row"><span>💱 即時匯率 (USD)</span><span id="val-usdrate">32.2</span></div>
       </div>
-      <div class="hint">輸入目前帳戶餘額</div>
-      <div class="calc-row"><span>帳戶現金 (TWD)</span><input type="number" id="inp-cash-twd" class="calc-input" inputmode="decimal" oninput="calcTotalNetWorth()"></div>
-      <div class="calc-row"><span>交割中現金 (TWD)</span><input type="number" id="inp-settle-twd" class="calc-input" inputmode="decimal" oninput="calcTotalNetWorth()"></div>
-      <div class="calc-row"><span>美元現金 (USD)</span><input type="number" id="inp-cash-usd" class="calc-input" inputmode="decimal" oninput="calcTotalNetWorth()"></div>
-      <div class="calc-row" style="border-color:rgba(255,59,48,0.3);"><span>貸款金額 (TWD)</span><input type="number" id="inp-loan-twd" class="calc-input" inputmode="decimal" oninput="calcTotalNetWorth()" style="color:#ff6b6b;"></div>
-      <div class="final-networth"><div class="final-label">資產總淨值 (扣除貸款)</div><div class="final-val" id="val-final-networth">0</div></div>
+      <div class="hint" style="margin-top:20px;">輸入目前的帳戶餘額</div>
+      <div class="calc-row"><span>台幣現金</span><input type="number" id="inp-cash-twd" class="calc-input" oninput="calcTotalNetWorth()"></div>
+      <div class="calc-row"><span>交割現金</span><input type="number" id="inp-settle-twd" class="calc-input" oninput="calcTotalNetWorth()"></div>
+      <div class="calc-row"><span>美金現金</span><input type="number" id="inp-cash-usd" class="calc-input" oninput="calcTotalNetWorth()"></div>
+      <div class="calc-row" style="color:#ff6b6b;"><span>貸款金額</span><input type="number" id="inp-loan-twd" class="calc-input" oninput="calcTotalNetWorth()" style="color:#ff6b6b;"></div>
+      <div class="final-networth"><div class="final-val" id="val-final-networth">0</div></div>
     </div>
   </div>
 </div>
@@ -223,183 +241,179 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 Chart.register(ChartDataLabels);
 const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
 
-// 模擬器 (用於預覽模式)
 const scriptRun = isGasEnv ? google.script.run : (() => {
   const mock = {
-    _cb: null,
-    withSuccessHandler: function(cb) { this._cb = cb; return this; },
-    withFailureHandler: function() { return this; },
-    getDashboardData: function(i, m) {
+    _cb: null, withSuccessHandler: function(cb) { this._cb = cb; return this; },
+    getDashboardData: function(inputs) {
       setTimeout(() => this._cb({
         history: [
-          {date:'01/07', val:5358703}, {date:'01/16', val:5583811}, {date:'01/30', val:5283226}, {date:'02/09', val:5406319}, {date:'02/14', val:5698248}
+            {date:'01/07', val:5350000}, {date:'01/16', val:5580000}, {date:'01/24', val:5320000}, 
+            {date:'01/30', val:5360000}, {date:'02/05', val:5230000}, {date:'02/14', val:5710000}, {date:'02/16', val:5690000}, {date:'02/17', val:5685000}
         ],
         assets: [
-          {name:'0050', value:2316000}, {name:'2330', value:381085}, {name:'債卷(台股)', value:1054130},
-          {name:'VT/VWRA', value:2310949}, {name:'TSLA (特斯拉)', value:379346}, {name:'Google (Alphabet)', value:392013}, {name:'Bitcoin', value:232460}
+            {name:'0050', value:2316000}, {name:'2330', value:381085}, {name:'債券(台股)', value:1054130},
+            {name:'VT/VWRA', value:2310949}, {name:'TSLA (特斯拉)', value:379346}, {name:'Google', value:392013}, {name:'Bitcoin', value:232460}
         ],
-        regions: [
-          {name:'台股', value:2697085}, {name:'美股', value:780228}, {name:'全球', value:2310949}, {name:'加密', value:232460}, {name:'債卷(台股)', value:1054130}
-        ],
-        investTotal: 7074856, usdRate: 31.41, realizedReturn: 22.41, realizedReturnTwd: 250034
-      }), 400);
+        regions: [{name:'台股', value:3751215}, {name:'美股', value:801083}, {name:'全球', value:2310949}, {name:'加密', value:232460}],
+        investTotal: 7065983, usdRate: 32.2, realizedReturn: 22.4, realizedReturnTwd: 250000
+      }), 500);
     },
-    callGeminiAnalysis: function(q, d) {
-      setTimeout(() => this._cb("主人好！我已分析完畢。目前的「美股」表現搶眼，「TSLA」近期貢獻巨大！建議可以稍微調整「比特幣」佔比來平滑風險。🚀"), 1000);
-    },
-    saveTrades: function() { setTimeout(() => this._cb({ok:true}), 500); }
+    saveTrades: function(p) { setTimeout(() => this._cb({ok:true, row: 88}), 400); },
+    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("模擬：配置已經更新！"), 800); }
   };
   return mock;
 })();
 
-let historyChart, assetsChart, regionsChart;
+let charts = {};
 let cachedData = null;
-let currentInvestTotal = 0;
-let currentUsdRate = 31.41;
 
 window.onload = () => {
-  ['cash-twd','cash-usd','loan-twd','settle-twd'].forEach(id => {
-    const el = document.getElementById('inp-'+id);
-    if(el) { el.value = localStorage.getItem('wr_'+id.replace('-','_')) || ""; }
+  ['cash-twd','settle-twd','cash-usd','loan-twd'].forEach(id => {
+    const val = localStorage.getItem('wr_'+id.replace('-','_'));
+    if(val) document.getElementById('inp-'+id).value = val;
   });
-  if(!document.getElementById('inp-cash-usd').value) document.getElementById('inp-cash-usd').value = "4170.99";
-  if(!document.getElementById('inp-loan-twd').value) document.getElementById('inp-loan-twd').value = "1507627";
-  calcTotalNetWorth();
   refreshDashboard(true);
-  initDraggable();
 };
 
 function switchView(v) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
-  if(v !== 'input') renderCharts();
+  if(v !== 'input') {
+      setTimeout(() => renderCharts(), 100);
+  }
 }
 
-function refreshDashboard(isSilent = false) {
-  const loaders = ['dash','net'];
-  const contentMap = { 'dash': 'dashboard-content', 'net': 'networth-content' };
-  
-  if(!isSilent) loaders.forEach(id => { 
-    const overlay = document.getElementById('loading-overlay-'+id);
-    const content = document.getElementById(contentMap[id]);
-    if(overlay) overlay.style.display = 'block'; if(content) content.style.display = 'none'; 
-  });
-
+function refreshDashboard(isSilent) {
   const inputs = {
     cashTwd: document.getElementById('inp-cash-twd').value,
     settleTwd: document.getElementById('inp-settle-twd').value,
     cashUsd: document.getElementById('inp-cash-usd').value,
     loanTwd: document.getElementById('inp-loan-twd').value
   };
-  
   scriptRun.withSuccessHandler(data => {
     cachedData = data;
-    loaders.forEach(id => { 
-      const overlay = document.getElementById('loading-overlay-'+id);
-      const content = document.getElementById(contentMap[id]);
-      if(overlay) overlay.style.display = 'none'; if(content) content.style.display = 'block'; 
-    });
-    currentInvestTotal = data.investTotal; currentUsdRate = data.usdRate;
+    document.getElementById('loading-overlay-dash').style.display = 'none';
+    document.getElementById('dashboard-content').style.display = 'block';
     document.getElementById('val-invest').innerText = data.investTotal.toLocaleString();
     document.getElementById('val-usdrate').innerText = data.usdRate.toFixed(2);
-    document.getElementById('val-return').innerText = (data.realizedReturn > 0 ? '+' : '') + data.realizedReturn.toFixed(2) + '%';
-    document.getElementById('val-realized-twd').innerText = (data.realizedReturnTwd > 0 ? '+' : '') + data.realizedReturnTwd.toLocaleString();
+    document.getElementById('val-return').innerText = data.realizedReturn.toFixed(2) + '%';
     calcTotalNetWorth();
-    if(!isSilent) showUpdateIndicator();
     renderCharts();
-  }).getDashboardData(inputs, !isSilent);
+  }).getDashboardData(inputs);
 }
 
 function calcTotalNetWorth() {
-  const t = Number(document.getElementById('inp-cash-twd')?.value || 0);
-  const s = Number(document.getElementById('inp-settle-twd')?.value || 0);
-  const u = Number(document.getElementById('inp-cash-usd')?.value || 0);
-  const l = Number(document.getElementById('inp-loan-twd')?.value || 0);
+  const t = Number(document.getElementById('inp-cash-twd').value || 0);
+  const s = Number(document.getElementById('inp-settle-twd').value || 0);
+  const u = Number(document.getElementById('inp-cash-usd').value || 0);
+  const l = Number(document.getElementById('inp-loan-twd').value || 0);
   localStorage.setItem('wr_cash_twd', t); localStorage.setItem('wr_settle_twd', s); 
   localStorage.setItem('wr_cash_usd', u); localStorage.setItem('wr_loan_twd', l);
-  const total = currentInvestTotal + t + s + (u * currentUsdRate) - l;
-  const finalEl = document.getElementById('val-final-networth');
-  if(finalEl) finalEl.innerText = Math.round(total).toLocaleString();
+  const rate = cachedData ? cachedData.usdRate : 32.2;
+  const total = (cachedData ? cachedData.investTotal : 0) + t + s + (u * rate) - l;
+  document.getElementById('val-final-networth').innerText = Math.round(total).toLocaleString();
 }
 
-function showUpdateIndicator() {
-  ['dash','net'].forEach(id => { const el = document.getElementById('update-msg-'+id); if(el) { el.style.opacity = 1; setTimeout(() => el.style.opacity = 0, 2000); } });
-}
-
-// --- 🤖 咪咪對話功能 ---
-function toggleAI() {
-  const win = document.getElementById('ai-window');
-  win.style.display = win.style.display === 'flex' ? 'none' : 'flex';
-}
-
-function sendChat() {
-  const input = document.getElementById('ai-input');
-  const text = input.value.trim();
-  if(!text) return;
-  appendMsg(text, 'user'); input.value = '';
-  const loadingId = 'loading-' + Date.now();
-  appendMsg('...', 'mimi', loadingId);
-
-  scriptRun.withSuccessHandler(res => {
-    const loader = document.getElementById(loadingId);
-    if(loader) loader.innerText = res;
-  }).callGeminiAnalysis(text, cachedData);
-}
-
-function appendMsg(text, type, id) {
-  const body = document.getElementById('ai-chat-body');
-  const div = document.createElement('div');
-  div.className = 'msg msg-' + type;
-  div.innerText = text;
-  if(id) div.id = id;
-  body.appendChild(div);
-  body.scrollTop = body.scrollHeight;
-}
-
-// --- 🤏 拖動功能 ---
-function initDraggable() {
-  const win = document.getElementById('ai-window');
-  const header = document.getElementById('ai-header');
-  let isDragging = false, startX, startY, winX, winY;
-  const start = (e) => {
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-    isDragging = true;
-    const touch = e.type === 'touchstart' ? e.touches[0] : e;
-    startX = touch.clientX; startY = touch.clientY;
-    winX = win.offsetLeft; winY = win.offsetTop;
-  };
-  const move = (e) => {
-    if (!isDragging) return;
-    const touch = e.type === 'touchmove' ? e.touches[0] : e;
-    win.style.left = (winX + touch.clientX - startX) + 'px';
-    win.style.top = (winY + touch.clientY - startY) + 'px';
-    win.style.right = 'auto'; win.style.bottom = 'auto';
-  };
-  const end = () => isDragging = false;
-  header.addEventListener('mousedown', start); header.addEventListener('touchstart', start);
-  window.addEventListener('mousemove', move); window.addEventListener('touchmove', move);
-  window.addEventListener('mouseup', end); window.addEventListener('touchend', end);
-}
-
-// --- 📊 圖表繪製 ---
 function renderCharts() {
   if(!cachedData) return;
-  const ctxH = document.getElementById('historyChart')?.getContext('2d');
-  if(ctxH){
-    if(historyChart) historyChart.destroy();
-    historyChart = new Chart(ctxH, { type: 'line', data: { labels: cachedData.history.map(d=>d.date), datasets:[{ label:'總淨值', data:cachedData.history.map(d=>d.val), borderColor:'#2f7bff', fill:true, backgroundColor:'rgba(47,123,255,0.1)', tension:0.4 }] }, options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, datalabels:{ display: false } }, scales:{ x:{ticks:{color:'#a9b6d6'}}, y:{ticks:{color:'#a9b6d6'}} } } });
-  }
-  const configPie = (ctx, data, colors) => {
-    return new Chart(ctx, { type: 'doughnut', data: { labels: data.map(d=>d.name), datasets:[{ data: data.map(d=>d.value), backgroundColor: colors, borderWidth: 0 }] }, options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{position:'right',labels:{color:'#fff',boxWidth:12}}, datalabels:{ color:'#fff', font:{weight:'bold',size:10}, formatter:(v,c)=>{ let sum=0; c.dataset.data.forEach(x=>sum+=x); if((v*100/sum) < 4) return null; return (v*100/sum).toFixed(1)+'%'; } } } } });
+  const config = (id, type, labels, data, isPie) => {
+    const canvas = document.getElementById(id);
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if(charts[id]) charts[id].destroy();
+    
+    charts[id] = new Chart(ctx, {
+      type: type,
+      data: { 
+          labels, 
+          datasets: [{ 
+              label: '價值',
+              data, 
+              backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E'] : 'rgba(47,123,255,0.2)', 
+              borderColor: '#2f7bff', 
+              fill: true,
+              tension: 0.4,
+              borderWidth: isPie ? 0 : 2
+          }] 
+      },
+      options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { 
+              legend: { 
+                  display: isPie, 
+                  position: 'right', 
+                  labels:{ color:'#fff', boxWidth: 10, font: { size: 11 } } 
+              }, 
+              datalabels: { 
+                  display: isPie, 
+                  color: '#fff',
+                  font: { weight: 'bold', size: 10 },
+                  formatter: (v, c) => {
+                      let sum = 0;
+                      c.dataset.data.forEach(x => sum += x);
+                      let perc = (v * 100 / sum).toFixed(1);
+                      return perc > 3 ? perc + '%' : null; // 佔比大於 3% 才顯示，避免重疊
+                  }
+              } 
+          },
+          scales: isPie ? {} : {
+              x: { ticks: { color: '#a9b6d6', font: { size: 10 } } },
+              y: { ticks: { color: '#a9b6d6' } }
+          }
+      }
+    });
   };
-  const ctxA = document.getElementById('assetsChart')?.getContext('2d');
-  if(ctxA){ if(assetsChart) assetsChart.destroy(); assetsChart = configPie(ctxA, cachedData.assets, ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA','#FF9800','#9E9E9E']); }
-  const ctxR = document.getElementById('regionsChart')?.getContext('2d');
-  if(ctxR){ if(regionsChart) regionsChart.destroy(); regionsChart = configPie(ctxR, cachedData.regions, ['#2f7bff','#34c759','#5856d6','#ff9500','#ff3b30']); }
+  
+  config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
+  config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
+  config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
 }
 
-function quick(n,s){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; }
-function submitTrade(){ alert("⏳ 交易寫入功能需連動 Code.gs"); }
+function quick(n,s,p){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; document.getElementById('platform').value=p; }
+
+function submitTrade() {
+  const btn = document.querySelector('button.primary');
+  // ★ 移除強制檢查邏輯，現在名稱可以留空
+  const nameInput = document.getElementById('name');
+  const name = nameInput.value.trim(); 
+
+  btn.disabled = true;
+  const payload = {
+    defaults: { platform: document.getElementById('platform').value, account: document.getElementById('account').value },
+    trades: [{
+      type: document.getElementById('type').value, name: name, symbol: document.getElementById('symbol').value,
+      price: Number(document.getElementById('price').value), qty: Number(document.getElementById('qty').value),
+      fee: Number(document.getElementById('fee').value), tax: Number(document.getElementById('tax').value),
+      cost: Number(document.getElementById('cost').value), date: new Date().toLocaleDateString('zh-TW')
+    }]
+  };
+  scriptRun.withSuccessHandler(res => {
+    btn.disabled = false;
+    const msgEl = document.getElementById('msg');
+    msgEl.innerText = "✅ 成功寫入第 " + res.row + " 列";
+    msgEl.className = "toast info";
+    msgEl.style.display = "block";
+    setTimeout(() => { msgEl.style.display = "none"; msgEl.className = "toast"; }, 3000);
+  }).saveTrades(payload);
+}
+
+function toggleAI() { const win = document.getElementById('ai-window'); win.style.display = win.style.display === 'flex' ? 'none' : 'flex'; }
+function sendChat() {
+  const input = document.getElementById('ai-input');
+  const text = input.value.trim(); if(!text) return;
+  appendMsg(text, 'user'); input.value = '';
+  appendMsg('咪咪思考中...', 'mimi', 'loading-ai');
+  scriptRun.withSuccessHandler(res => {
+    document.getElementById('loading-ai').innerText = res;
+    document.getElementById('loading-ai').id = '';
+  }).callGeminiAnalysis(text, cachedData);
+}
+function appendMsg(t, type, id) {
+  const body = document.getElementById('ai-chat-body');
+  const div = document.createElement('div'); div.className = 'msg msg-' + type; div.innerText = t; if(id) div.id = id;
+  body.appendChild(div); body.scrollTop = body.scrollHeight;
+}
 </script>
 </body>
 </html>
