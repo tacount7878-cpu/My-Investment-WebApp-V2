@@ -177,7 +177,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
     <div class="hint">常用快選</div>
     <div class="chips">
       <div class="chip" onclick="quick('富邦台50','006208.TW','元大(台股)')">富邦台50</div>
-      <div class="chip" onclick="quick('台積電','2330.TW','元大(台股)')">台積電</div>
+      <div class="chip" onclick="quick('台績電','2330.TW','元大(台股)')">台績電</div>
       <div class="chip" onclick="quick('VWRA','VWRA.L','IBKR')">VWRA</div>
       <div class="chip" onclick="quick('TSLA(FT)','TSLA','Firstrade(FT)')">TSLA(FT)</div>
       <div class="chip" onclick="quick('比特幣','BTC-USD','錢包')">比特幣</div>
@@ -247,7 +247,9 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
     <div id="networth-content">
       <div class="chart-card">
         <div class="calc-row"><span>📊 投資部位市值</span><span id="val-invest">0</span></div>
-        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return">0%</span></div>
+        <!-- 💡 這裡依照翔翔的要求，新增金額列在報酬率上面 -->
+        <div class="calc-row"><span>💰 已實現損益 (金額)</span><span id="val-return-amount" class="calc-value">0</span></div>
+        <div class="calc-row"><span>📈 報酬率 (已實現)</span><span id="val-return" class="calc-value">0%</span></div>
         <div class="calc-row"><span>💱 即時匯率 (USD)</span><span id="val-usdrate">32.2</span></div>
       </div>
       <div class="hint" style="margin-top:20px;">輸入目前的帳戶餘額</div>
@@ -271,14 +273,15 @@ const scriptRun = isGasEnv ? google.script.run : (() => {
     withFailureHandler: function() { return this; },
     getDashboardData: function(inputs) {
       setTimeout(() => this._cb({
-        history: [{date:'01/07', val:5350000}, {date:'02/17', val:5685000}],
-        assets: [{name:'模擬持倉', value:2316000}],
-        regions: [{name:'台股', value:3751215}],
-        investTotal: 7065983, usdRate: 32.2, realizedReturn: 22.4, realizedReturnTwd: 250000
+        // 💡 模擬數據補齊，讓預覽圖表不再單調
+        history: [{date:'01/07', val:5350000}, {date:'01/09', val:5390000}, {date:'01/16', val:5580000}, {date:'01/24', val:5320000}, {date:'02/05', val:5230000}, {date:'02/14', val:5710000}, {date:'02/16', val:5700000}, {date:'02/17', val:5685000}],
+        assets: [{name:'0050', value:2316000}, {name:'2330', value:380000}, {name:'債券(台股)', value:850000}, {name:'VT/VWRA', value:2300000}, {name:'TSLA', value:380000}, {name:'Bitcoin', value:230000}],
+        regions: [{name:'台股', value:3751215}, {name:'美股', value:1200000}, {name:'全球', value:2300000}, {name:'加密', value:230000}],
+        investTotal: 6875276.2, usdRate: 31.37, realizedReturn: 19.12, realizedReturnTwd: 252087
       }), 500);
     },
     saveTrades: function(p) { setTimeout(() => this._cb({ok:true, row: 88}), 1000); },
-    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("模擬模式：大姊姊在幫你對帳喔。"), 800); }
+    callGeminiAnalysis: function(q, d) { setTimeout(() => this._cb("模擬模式：翔翔乖，大姊姊正在幫你對帳喔。"), 800); }
   };
   return mock;
 })();
@@ -312,11 +315,22 @@ function refreshDashboard(isSilent) {
     cachedData = data;
     const ov = document.getElementById('loading-overlay-dash'); if(ov) ov.style.display = 'none';
     const ct = document.getElementById('dashboard-content'); if(ct) ct.style.display = 'block';
+    
+    // 填寫基礎數據
     document.getElementById('val-invest').innerText = data.investTotal.toLocaleString();
     document.getElementById('val-usdrate').innerText = data.usdRate.toFixed(2);
+    
+    // 💡 搭配後端 V6.61 回傳值：顯示金額與百分比
+    document.getElementById('val-return-amount').innerText = '$' + Math.round(data.realizedReturnTwd).toLocaleString();
     document.getElementById('val-return').innerText = data.realizedReturn.toFixed(2) + '%';
+    
     calcTotalNetWorth();
     renderCharts();
+    
+    if(!isSilent) {
+      const dmsg = document.getElementById('update-msg-dash'); if(dmsg) { dmsg.style.opacity = 1; setTimeout(()=>dmsg.style.opacity=0, 2000); }
+      const nmsg = document.getElementById('update-msg-net'); if(nmsg) { nmsg.style.opacity = 1; setTimeout(()=>nmsg.style.opacity=0, 2000); }
+    }
   }).getDashboardData(inputs);
 }
 
@@ -339,24 +353,43 @@ function renderCharts() {
     const ctx = canvas.getContext('2d'); if(charts[id]) charts[id].destroy();
     charts[id] = new Chart(ctx, {
       type: type,
-      data: { labels, datasets: [{ label:'價值', data, backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA'] : 'rgba(47,123,255,0.2)', borderColor:'#2f7bff', fill:true, tension:0.4, borderWidth: isPie ? 0 : 2 }] },
-      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:isPie, position:'right', labels:{color:'#fff', boxWidth:10}}, datalabels:{display:isPie, color:'#fff', font:{weight:'bold', size:10}, formatter:(v,c)=>{let sum=0; c.dataset.data.forEach(x=>sum+=x); let perc=(v*100/sum).toFixed(1); return perc>3?perc+'%':null;}} }, scales: isPie?{}:{x:{ticks:{color:'#a9b6d6'}},y:{ticks:{color:'#a9b6d6'}}} }
+      data: { labels, datasets: [{ label:'價值', data, backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA'] : 'rgba(47,123,255,0.2)', borderColor:'#2f7bff', fill:true, tension:0.4, borderWidth: isPie ? 0 : 2, pointRadius: isPie ? 0 : 4, pointBackgroundColor: '#2f7bff' }] },
+      options: { 
+        responsive:true, 
+        maintainAspectRatio:false, 
+        plugins:{ 
+          // 💡 修正 Legend 為顯示，並靠右，這能解決「圖亂掉」的視覺感
+          legend:{display:isPie, position:'right', labels:{color:'#fff', boxWidth:12, font:{size:11}}}, 
+          datalabels:{
+            display:isPie, 
+            color:'#fff', 
+            font:{weight:'bold', size:10}, 
+            formatter:(v,c)=>{
+              let sum=0; c.dataset.data.forEach(x=>sum+=x); 
+              let perc=(v*100/sum).toFixed(1); 
+              return perc > 3 ? perc+'%' : null;
+            }
+          } 
+        }, 
+        scales: isPie?{}:{
+          x:{ticks:{color:'#a9b6d6', font:{size:10}}, grid:{color:'rgba(255,255,255,0.05)'}},
+          y:{ticks:{color:'#a9b6d6', font:{size:10}}, grid:{color:'rgba(255,255,255,0.05)'}}
+        } 
+      }
     });
   };
-  config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
+  if(cachedData.history && cachedData.history.length) config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
   config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
   config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
 }
 
 function quick(n,s,p){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; document.getElementById('platform').value=p; }
 
-// 🚀 核心邏輯：送出交易並觸發動畫
 function submitTrade() {
   const btn = document.getElementById('submit-btn');
   const msgEl = document.getElementById('msg');
   const originalText = "送出交易";
 
-  // 1. 物理按下與狀態切換
   btn.disabled = true;
   btn.innerText = "⏳ 寫入中...";
   msgEl.innerText = "⏳ 正在努力寫入中...";
@@ -378,6 +411,7 @@ function submitTrade() {
     btn.innerText = originalText;
     msgEl.innerText = "✅ 成功寫入第 " + res.row + " 列";
     setTimeout(() => { msgEl.style.display = "none"; }, 3000);
+    refreshDashboard(true);
   }).saveTrades(payload);
 }
 
@@ -385,7 +419,7 @@ function toggleAI() { const win = document.getElementById('ai-window'); win.styl
 function sendChat() {
   const input = document.getElementById('ai-input'), text = input.value.trim(); if(!text) return;
   appendMsg(text, 'user'); input.value = '';
-  const id = 'msg-' + Date.now(); appendMsg('我看一下喔! 等一下', 'mimi', id);
+  const id = 'msg-' + Date.now(); appendMsg('姊姊正在看喔! 等一下下...', 'mimi', id);
   scriptRun.withSuccessHandler(res => { document.getElementById(id).innerText = res; }).callGeminiAnalysis(text, cachedData);
 }
 function appendMsg(t, type, id) {
@@ -393,7 +427,6 @@ function appendMsg(t, type, id) {
   body.appendChild(div); body.scrollTop = body.scrollHeight;
 }
 
-// 🤏 穩定版視窗拖曳功能
 function initDraggable() {
   const win = document.getElementById('ai-window');
   const header = document.getElementById('ai-header');
@@ -406,7 +439,6 @@ function initDraggable() {
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     offsetX = clientX - win.offsetLeft;
     offsetY = clientY - win.offsetTop;
-    if (e.touches) e.preventDefault(); // 防止手機滾動
   }
   function move(e) {
     if (!isDragging) return;

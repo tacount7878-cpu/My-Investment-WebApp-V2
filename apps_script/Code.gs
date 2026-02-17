@@ -1,15 +1,13 @@
 /**
  * 投資戰情室 V6.61 - 專屬管家大姊姊安全版
- * 修正項目：
- * 1. 隱藏 API Key：使用 PropertiesService 安全讀取，防止再次被判定為洩漏。
- * 2. AI 助理個性：翔翔專屬管家大姊姊「給咪咪」，溫柔、優雅且專業。
- * 3. 買賣寫入分流：買入寫入 K、L 欄，賣出寫入 I、J 欄。
- * 4. 成本欄位精準對接：「成本(原幣)※賣出需填」確保資料不空白。
- * 5. 補全缺失欄位：正確寫入平台、帳戶類型、幣別。
+ * * 核心功能：
+ * 1. 透過 PropertiesService 安全管理 GEMINI_API_KEY。
+ * 2. 翔翔專屬管家「給咪咪」個性化回覆。
+ * 3. 買賣資料分流寫入（買入：K,L / 賣出：I,J）。
+ * 4. 自動計算價金、損益與 TWD 換算公式。
+ * 5. Yahoo Finance 即時匯率與價格抓取。
  */
 
-// 🔒 安全讀取方式：不再將明文 KEY 寫在這裡
-// 請至「專案設定 (⚙️)」->「指令碼屬性」新增名為 GEMINI_API_KEY 的屬性。
 const GEMINI_API_KEY = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
 
 const CONFIG = {
@@ -26,7 +24,7 @@ const CONFIG = {
 ================================ */
 function doGet() {
   return HtmlService.createHtmlOutputFromFile("ui")
-    .setTitle("投資戰情室")
+    .setTitle("投資戰情室 V6.61")
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
 }
 
@@ -100,6 +98,7 @@ function buildFormulaRow_(headers, defaults, t, r, getCol) {
 
   setVal("狀態", "已完成");
 
+  // 套用公式
   setVal("價金(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), I${r}*J${r}, K${r}*L${r})`);
   setVal("應收付(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), P${r}-M${r}-N${r}, P${r}+M${r}+N${r})`);
   setVal("損益(原幣)", `=IF(ISNUMBER(SEARCH("賣",B${r})), Q${r}-O${r}, "")`);
@@ -186,11 +185,15 @@ function getDashboardData(inputs) {
   const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
   let realizedReturn = 0, realizedReturnTwd = 0;
   if (logSh) {
-    const summary = logSh.getRange("Y1:Z30").getValues();
+    // 修正點：使用 getDisplayValues() 確保讀取到顯示文字（包含百分比符號）
+    const summary = logSh.getRange("Y1:Z30").getDisplayValues();
     summary.forEach(row => {
       const label = String(row[0]);
       if (label.includes("已實現總損益(TWD)")) realizedReturnTwd = parseNum_(row[1]);
-      if (label.includes("已實現總損益(%)")) realizedReturn = (Number(String(row[1]).replace("%", "")) || 0);
+      if (label.includes("已實現總損益(%)")) {
+        // 修正點：直接處理顯示文字，確保 19.12% 轉換為數值 19.12
+        realizedReturn = (Number(String(row[1]).replace("%", "").replace(/,/g, "")) || 0);
+      }
     });
   }
 
