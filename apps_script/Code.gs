@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 投資戰情室 V6.61 - 專屬管家大姊姊安全版
  * * 核心功能：
  * 1. 透過 PropertiesService 安全管理 GEMINI_API_KEY。
@@ -130,24 +130,57 @@ function getDashboardData(inputs) {
   const detailSh = ss.getSheetByName(CONFIG.SHEET_DETAILS);
   let freshUsdRate = 32.2;
 
-  if (detailSh) {
+  /* ================================
+     🟢 只有手動更新才同步市場資料
+  =================================*/
+  if (detailSh && inputs) {
+
+    /* ===== 1️⃣ 批次更新股價 ===== */
+    const startRow = 6; // B6 開始
+    const lastRow = detailSh.getLastRow();
+    if (lastRow >= startRow) {
+      const symbolRange = detailSh.getRange(startRow, 2, lastRow - startRow + 1, 1); // B欄
+      const symbols = symbolRange.getValues();
+
+      const priceResults = [];
+      for (let i = 0; i < symbols.length; i++) {
+        const symbol = String(symbols[i][0] || "").trim();
+        if (symbol) {
+          const price = fetchYahooPrice(symbol);
+          priceResults.push([price ? Number(price) : ""]);
+        } else {
+          priceResults.push([""]);
+        }
+      }
+
+      // 批次寫回 L欄（第12欄）
+      detailSh.getRange(startRow, 12, priceResults.length, 1).setValues(priceResults);
+    }
+
+    /* ===== 2️⃣ 更新匯率 ===== */
     const fetchedRate = fetchYahooPrice("USDTWD=X");
     if (fetchedRate && !isNaN(fetchedRate)) {
       freshUsdRate = Number(fetchedRate);
     }
     detailSh.getRange("A2").setValue(freshUsdRate);
 
-    if (inputs) {
-      if (inputs.cashTwd !== "") detailSh.getRange("C2").setValue(Number(inputs.cashTwd));
-      if (inputs.settleTwd !== "") detailSh.getRange("E2").setValue(Number(inputs.settleTwd));
-      if (inputs.cashUsd !== "") detailSh.getRange("G2").setValue(Number(inputs.cashUsd));
-      if (inputs.loanTwd !== "") detailSh.getRange("I2").setValue(Number(inputs.loanTwd));
-    }
+    /* ===== 3️⃣ 更新現金資料 ===== */
+    if (inputs.cashTwd !== "") detailSh.getRange("C2").setValue(Number(inputs.cashTwd));
+    if (inputs.settleTwd !== "") detailSh.getRange("E2").setValue(Number(inputs.settleTwd));
+    if (inputs.cashUsd !== "") detailSh.getRange("G2").setValue(Number(inputs.cashUsd));
+    if (inputs.loanTwd !== "") detailSh.getRange("I2").setValue(Number(inputs.loanTwd));
+
+    // 一次 flush
+    SpreadsheetApp.flush();
   }
-  SpreadsheetApp.flush();
+
+  /* ================================
+     🔵 以下純讀取資料（AI 也會走這裡）
+  =================================*/
 
   const assetSh = ss.getSheetByName(CONFIG.SHEET_ASSETS);
   let investTotal = 0, assets = [];
+
   if (assetSh && assetSh.getLastRow() >= 2) {
     const headers = assetSh.getRange(1, 1, 1, assetSh.getLastColumn()).getValues()[0];
     const valueCol = headers.indexOf("市值(TWD)") + 1;
@@ -156,6 +189,7 @@ function getDashboardData(inputs) {
     if (valueCol > 0 && nameCol > 0) {
       const vals = assetSh.getRange(2, valueCol, assetSh.getLastRow() - 1, 1).getValues();
       const names = assetSh.getRange(2, nameCol, assetSh.getLastRow() - 1, 1).getValues();
+
       for (let i = 0; i < vals.length; i++) {
         const val = parseNum_(vals[i][0]);
         const name = String(names[i][0] || "").trim();
@@ -171,33 +205,46 @@ function getDashboardData(inputs) {
   let history = [];
   if (histSh && histSh.getLastRow() >= 2) {
     history = histSh.getRange(2, 1, histSh.getLastRow() - 1, 2).getValues()
-      .filter(r => r[0] && parseNum_(r[1]) > 0).slice(-30)
-      .map(r => ({ date: r[0] instanceof Date ? Utilities.formatDate(r[0], "GMT+8", "MM/dd") : String(r[0]), val: parseNum_(r[1]) }));
+      .filter(r => r[0] && parseNum_(r[1]) > 0)
+      .slice(-30)
+      .map(r => ({
+        date: r[0] instanceof Date
+          ? Utilities.formatDate(r[0], "GMT+8", "MM/dd")
+          : String(r[0]),
+        val: parseNum_(r[1])
+      }));
   }
 
   const regionSh = ss.getSheetByName(CONFIG.SHEET_REGIONS);
   let regions = [];
   if (regionSh && regionSh.getLastRow() >= 2) {
     regions = regionSh.getRange(2, 1, regionSh.getLastRow() - 1, 2).getValues()
-      .map(r => ({ name: String(r[0] || "").trim(), value: parseNum_(r[1]) })).filter(r => r.value > 0);
+      .map(r => ({ name: String(r[0] || "").trim(), value: parseNum_(r[1]) }))
+      .filter(r => r.value > 0);
   }
 
   const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
   let realizedReturn = 0, realizedReturnTwd = 0;
   if (logSh) {
-    // 修正點：使用 getDisplayValues() 確保讀取到顯示文字（包含百分比符號）
     const summary = logSh.getRange("Y1:Z30").getDisplayValues();
     summary.forEach(row => {
       const label = String(row[0]);
       if (label.includes("已實現總損益(TWD)")) realizedReturnTwd = parseNum_(row[1]);
       if (label.includes("已實現總損益(%)")) {
-        // 修正點：直接處理顯示文字，確保 19.12% 轉換為數值 19.12
         realizedReturn = (Number(String(row[1]).replace("%", "").replace(/,/g, "")) || 0);
       }
     });
   }
 
-  return { history, assets, regions, investTotal, usdRate: freshUsdRate, realizedReturn, realizedReturnTwd };
+  return {
+    history,
+    assets,
+    regions,
+    investTotal,
+    usdRate: freshUsdRate,
+    realizedReturn,
+    realizedReturnTwd
+  };
 }
 
 /* ================================

@@ -95,7 +95,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 #ai-fab {
   position: fixed; bottom: 30px; right: 20px;
   width: 68px; height: 68px; border-radius: 50%;
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
+  background: white;
   box-shadow: 0 10px 30px rgba(110, 69, 226, 0.6);
   display: flex; align-items: center; justify-content: center;
   font-size: 32px; cursor: pointer; z-index: 9999;
@@ -137,13 +137,21 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 
 <body>
 
-<div id="ai-fab" onclick="toggleAI()">🤖</div>
-
-<div id="ai-window">
-  <div id="ai-header">
-    <div class="ai-title">🤖 咪咪戰情分析</div>
-    <button style="background:none; border:none; color:white; font-size:24px;" onclick="toggleAI()">×</button>
+  <div id="ai-fab" onclick="toggleAI()">
+    <img src="https://raw.githubusercontent.com/tacount7878-cpu/mimi-assets/c4e5c08b0e3e79afdd7b7a586eb620a798f56b9d/Gemini.png"
+         style="width:100%; height:100%; object-fit:cover; border-radius:50%;">
   </div>
+
+  <div id="ai-window">
+    <div id="ai-header">
+      <div class="ai-title" style="display:flex; align-items:center; gap:10px;">
+        <img src="https://raw.githubusercontent.com/tacount7878-cpu/mimi-assets/c4e5c08b0e3e79afdd7b7a586eb620a798f56b9d/Gemini.png"
+             style="width:26px; height:26px; border-radius:50%; object-fit:cover; flex-shrink:0;">
+        <span style="font-weight:800;">咪咪戰情分析</span>
+      </div>
+      <button style="background:none; border:none; color:white; font-size:24px; cursor:pointer;"
+              onclick="toggleAI()">×</button>
+    </div>
   <div id="ai-chat-body">
     <div class="msg msg-mimi">嗨，翔翔。😊</div>
   </div>
@@ -419,7 +427,7 @@ function toggleAI() { const win = document.getElementById('ai-window'); win.styl
 function sendChat() {
   const input = document.getElementById('ai-input'), text = input.value.trim(); if(!text) return;
   appendMsg(text, 'user'); input.value = '';
-  const id = 'msg-' + Date.now(); appendMsg('姊姊正在看喔! 等一下下...', 'mimi', id);
+  const id = 'msg-' + Date.now(); appendMsg('姊姊正在看喔! 等一下...', 'mimi', id);
   scriptRun.withSuccessHandler(res => { document.getElementById(id).innerText = res; }).callGeminiAnalysis(text, cachedData);
 }
 function appendMsg(t, type, id) {
