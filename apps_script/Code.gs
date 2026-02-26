@@ -123,86 +123,123 @@ function findFirstEmptyRow_(sh) {
 }
 
 /* ================================
-   3️⃣ Dashboard 數據讀取
+   3️⃣ Dashboard 數據讀取 (V4.2 穩定強化版)
 ================================ */
 function getDashboardData(inputs) {
+
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   const detailSh = ss.getSheetByName(CONFIG.SHEET_DETAILS);
   let freshUsdRate = 32.2;
 
   /* ================================
-     🟢 只有手動更新才同步市場資料
+     🟢 手動更新才同步市場資料
   =================================*/
   if (detailSh && inputs) {
 
-    /* ===== 1️⃣ 批次更新股價 ===== */
-    const startRow = 6; // B6 開始
+    const startRow = 6;
     const lastRow = detailSh.getLastRow();
+
     if (lastRow >= startRow) {
-      const symbolRange = detailSh.getRange(startRow, 2, lastRow - startRow + 1, 1); // B欄
-      const symbols = symbolRange.getValues();
+      const symbols = detailSh.getRange(startRow, 2, lastRow - startRow + 1, 1).getValues();
 
-      const priceResults = [];
-      for (let i = 0; i < symbols.length; i++) {
-        const symbol = String(symbols[i][0] || "").trim();
-        if (symbol) {
-          const price = fetchYahooPrice(symbol);
-          priceResults.push([price ? Number(price) : ""]);
-        } else {
-          priceResults.push([""]);
-        }
-      }
+      const priceResults = symbols.map(s => {
+        const symbol = String(s[0] || "").trim();
+        return [symbol ? Number(fetchYahooPrice(symbol)) : ""];
+      });
 
-      // 批次寫回 L欄（第12欄）
       detailSh.getRange(startRow, 12, priceResults.length, 1).setValues(priceResults);
     }
 
-    /* ===== 2️⃣ 更新匯率 ===== */
     const fetchedRate = fetchYahooPrice("USDTWD=X");
     if (fetchedRate && !isNaN(fetchedRate)) {
       freshUsdRate = Number(fetchedRate);
     }
+
     detailSh.getRange("A2").setValue(freshUsdRate);
 
-    /* ===== 3️⃣ 更新現金資料 ===== */
     if (inputs.cashTwd !== "") detailSh.getRange("C2").setValue(Number(inputs.cashTwd));
     if (inputs.settleTwd !== "") detailSh.getRange("E2").setValue(Number(inputs.settleTwd));
     if (inputs.cashUsd !== "") detailSh.getRange("G2").setValue(Number(inputs.cashUsd));
     if (inputs.loanTwd !== "") detailSh.getRange("I2").setValue(Number(inputs.loanTwd));
 
-    // 一次 flush
     SpreadsheetApp.flush();
   }
 
   /* ================================
-     🔵 以下純讀取資料（AI 也會走這裡）
+     🔵 純讀取資料（AI 也會走這裡）
   =================================*/
 
+  /* ===== 1️⃣ 資產統計(彙整) ===== */
   const assetSh = ss.getSheetByName(CONFIG.SHEET_ASSETS);
-  let investTotal = 0, assets = [];
+  let investTotal = 0;
+  let assets = [];
 
   if (assetSh && assetSh.getLastRow() >= 2) {
+
     const headers = assetSh.getRange(1, 1, 1, assetSh.getLastColumn()).getValues()[0];
+
+    // ⭐ 名稱欄雙重保護
+    let nameCol = headers.indexOf("合併鍵(GroupKey)") + 1;
+    if (nameCol <= 0) {
+      nameCol = headers.indexOf("標的名稱") + 1;
+    }
+    if (nameCol <= 0) {
+      throw new Error("資產統計(彙整)缺少名稱欄位");
+    }
+
     const valueCol = headers.indexOf("市值(TWD)") + 1;
-    let nameCol = headers.indexOf("合併鍵(GroupKey)") + 1 || headers.indexOf("標的名稱") + 1;
+    const pnlCol   = headers.indexOf("損益(TWD)") + 1;
+    const rateCol  = headers.indexOf("報酬率") + 1;
 
-    if (valueCol > 0 && nameCol > 0) {
-      const vals = assetSh.getRange(2, valueCol, assetSh.getLastRow() - 1, 1).getValues();
-      const names = assetSh.getRange(2, nameCol, assetSh.getLastRow() - 1, 1).getValues();
+    if (valueCol > 0) {
 
-      for (let i = 0; i < vals.length; i++) {
-        const val = parseNum_(vals[i][0]);
-        const name = String(names[i][0] || "").trim();
-        if (val > 0 && name && name !== "#N/A") {
-          investTotal += val;
-          assets.push({ name: name, value: val });
+      const rowCount = assetSh.getLastRow() - 1;
+      const rows = assetSh.getRange(2, 1, rowCount, headers.length).getValues();
+
+      for (let i = 0; i < rowCount; i++) {
+
+        const name  = String(rows[i][nameCol - 1] || "").trim();
+        const value = parseNum_(rows[i][valueCol - 1]);
+        const pnl   = pnlCol > 0 ? parseNum_(rows[i][pnlCol - 1]) : 0;
+
+        if (!name || value <= 0 || name === "#N/A") continue;
+
+        investTotal += value;
+
+        let returnRate = 0;
+
+        // ✅ 優先使用 Sheet 現成報酬率
+        if (rateCol > 0 && rows[i][rateCol - 1] !== "") {
+
+          const rawRate = rows[i][rateCol - 1];
+
+          if (typeof rawRate === "string" && rawRate.includes("%")) {
+            returnRate = Number(rawRate.replace("%", "").replace(/,/g, ""));
+          } else {
+            returnRate = parseNum_(rawRate) * 100;
+          }
+
+        } else {
+          // 🔁 fallback：用損益反推 (成本 = 市值 - 損益)
+          const cost = value - pnl;
+          if (cost !== 0) {
+            returnRate = (pnl / cost) * 100;
+          }
         }
+
+        assets.push({
+          name: name,
+          value: value,
+          returnRate: returnRate
+        });
       }
     }
   }
 
+  /* ===== 2️⃣ 淨值歷史 ===== */
   const histSh = ss.getSheetByName(CONFIG.SHEET_HISTORY);
   let history = [];
+
   if (histSh && histSh.getLastRow() >= 2) {
     history = histSh.getRange(2, 1, histSh.getLastRow() - 1, 2).getValues()
       .filter(r => r[0] && parseNum_(r[1]) > 0)
@@ -215,23 +252,33 @@ function getDashboardData(inputs) {
       }));
   }
 
+  /* ===== 3️⃣ 投資地區 ===== */
   const regionSh = ss.getSheetByName(CONFIG.SHEET_REGIONS);
   let regions = [];
+
   if (regionSh && regionSh.getLastRow() >= 2) {
     regions = regionSh.getRange(2, 1, regionSh.getLastRow() - 1, 2).getValues()
-      .map(r => ({ name: String(r[0] || "").trim(), value: parseNum_(r[1]) }))
+      .map(r => ({
+        name: String(r[0] || "").trim(),
+        value: parseNum_(r[1])
+      }))
       .filter(r => r.value > 0);
   }
 
+  /* ===== 4️⃣ 已實現統計 ===== */
   const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
-  let realizedReturn = 0, realizedReturnTwd = 0;
+  let realizedReturn = 0;
+  let realizedReturnTwd = 0;
+
   if (logSh) {
     const summary = logSh.getRange("Y1:Z30").getDisplayValues();
     summary.forEach(row => {
-      const label = String(row[0]);
-      if (label.includes("已實現總損益(TWD)")) realizedReturnTwd = parseNum_(row[1]);
+      const label = String(row[0] || "");
+      if (label.includes("已實現總損益(TWD)")) {
+        realizedReturnTwd = parseNum_(row[1]);
+      }
       if (label.includes("已實現總損益(%)")) {
-        realizedReturn = (Number(String(row[1]).replace("%", "").replace(/,/g, "")) || 0);
+        realizedReturn = Number(String(row[1]).replace("%", "").replace(/,/g, "")) || 0;
       }
     });
   }
@@ -248,60 +295,111 @@ function getDashboardData(inputs) {
 }
 
 /* ================================
-   4️⃣ AI 助理分析 (Gemini 2.0 Flash Lite)
+   4️⃣ AI 助理分析 - V4.2 Balanced War Room
 ================================ */
 function callGeminiAnalysis(userQuery) {
+
   if (!GEMINI_API_KEY) 
-    return "⚠️ 翔翔，姊姊找不到您的 API Key 呢。請去專案設定檢查看看喔。";
+    return "⚠️ 翔翔，API Key 未設定。";
 
   const data = getDashboardData(null);
-  const assetStr = data.assets.map(a => `${a.name}(${Math.round(a.value/10000)}萬)`).join("、");
-  
-  const systemPrompt = `
-妳是翔翔的專屬管家大姊姊「給咪咪」。
-妳專業、溫柔、情緒穩定且優雅，內心非常關心他。
-妳說話幽默70%，誠實80%，像家人一樣穩穩接住翔翔。
 
-請依問題語境，自然融入以下風格之一（不要顯示類型名稱）：
-1. 翔翔乖，給姊姊一點時間算算看喔。
-2. 姊姊想想…等等回妳喔。
-3. 等一下我看看喔，正在幫妳對帳呢。
-4. 翔翔先喝口水，姊姊馬上幫妳看好囉。
-5. 這次的數據有點意思，讓姊姊研究一下下。
-6. 別急，姊姊正在幫妳檢查細節呢。
-7. 等我一下喔，姊姊正在認真整理報告中。
-8. 姊姊正在看盤，等等就跟妳說分析結果喔。
-9. 讓我專心看一下，馬上給翔翔答案。
-10. 稍微等一下喔，大姊姊一直都在幫妳看一下。
+  /* ================================
+     📊 風險排序引擎（純程式）
+  ================================= */
 
-【當前資產概況】
+  let processedAssets = [];
+  let hasCriticalRisk = false;
+
+  if (data.assets && data.assets.length > 0) {
+
+    processedAssets = data.assets.map(a => {
+      const rate = Number(a.returnRate) || 0;
+
+      if (rate <= -10) hasCriticalRisk = true;
+
+      return {
+        name: a.name,
+        value: a.value,
+        rateNum: rate
+      };
+    });
+
+    // 由低到高排序（風險優先）
+    processedAssets.sort((a, b) => a.rateNum - b.rateNum);
+  }
+
+  const assetStr = processedAssets.map(a =>
+    `${a.name}(市值:${Math.round(a.value/10000)}萬, 報酬:${a.rateNum.toFixed(2)}%)`
+  ).join("、");
+
+  /* ================================
+     🧠 Prompt 設計
+  ================================= */
+
+  let systemPrompt = `
+妳是翔翔的專屬金融管家，同時保留30%溫柔姊姊人格。
+回答以理性分析為主（約70%），情緒陪伴為輔（約30%）。
+
+回答規則：
+1. 先給結論，再給觀察。
+2. 若存在負報酬標的，優先說明。
+3. 若存在超過20%報酬標的，提醒可能過熱。
+4. 禁止冗長鋪陳。
+5. 文字精準、冷靜。
+
+【目前資產狀況】
 總市值：${Math.round(data.investTotal).toLocaleString()} TWD
 已實現損益：${Math.round(data.realizedReturnTwd).toLocaleString()} TWD
-主要持倉：${assetStr}
-即時匯率：${data.usdRate}
+資產列表（已依風險排序）：
+${assetStr}
+`;
 
-【任務限制】
-1. 必須稱呼「翔翔」。
-2. 回覆自然有溫度，禁止罐頭客套話。
-3. 字數 150 字內。
-4. 純文字，不准出現 Markdown 符號。
+  if (hasCriticalRisk) {
+    systemPrompt += `
+⚠️ 系統提示：偵測到跌幅超過10%的標的，必須優先說明其風險。
+`;
+  }
+
+  systemPrompt += `
+【輸出限制】
+- 必須稱呼「翔翔」
+- 純文字
+- 不得使用 Markdown
+- 150字內
 `;
 
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=" + GEMINI_API_KEY;
+
   const payload = {
-    contents: [{ role: "user", parts: [{ text: systemPrompt + "翔翔的問題：" + userQuery }] }]
+    contents: [{
+      role: "user",
+      parts: [{
+        text: systemPrompt + "\n翔翔的問題：" + userQuery
+      }]
+    }]
   };
 
   try {
     const response = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
     });
+
     const json = JSON.parse(response.getContentText());
-    if (json.error) return "哎呀，系統鬧脾氣了，翔翔先別急：" + json.error.message;
-    let reply = json.candidates?.[0]?.content?.parts?.[0]?.text || "翔翔，大姊姊剛才分心了，沒聽清楚呢。";
+
+    if (json.error)
+      return "翔翔，系統干擾：" + json.error.message;
+
+    let reply = json.candidates?.[0]?.content?.parts?.[0]?.text
+                || "翔翔，訊號短暫中斷。";
+
     return reply.replace(/[\*#_~`\[\]]/g, "").trim();
+
   } catch (e) {
-    return "連線斷掉了呢，翔翔休息一下再試試看吧。";
+    return "翔翔，伺服器波動，稍後再試。";
   }
 }
 
