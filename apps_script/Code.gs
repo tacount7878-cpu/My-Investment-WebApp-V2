@@ -165,6 +165,53 @@ function getDashboardData(inputs) {
     SpreadsheetApp.flush();
   }
 
+/* ================================
+   🟣 寫入淨值歷史（同日覆蓋 / 隔日新增）
+================================ */
+
+if (inputs) {
+
+  const histSh = ss.getSheetByName(CONFIG.SHEET_HISTORY);
+
+  if (histSh) {
+
+    const today = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy-MM-dd");
+
+    // 直接讀 Google Sheet 已計算好的 K2（資產總淨值）
+    const investTotalNow = ss.getSheetByName(CONFIG.SHEET_DETAILS).getRange("K2").getValue();
+
+    const lastRow = histSh.getLastRow();
+
+    if (lastRow >= 2) {
+
+      const lastDate = Utilities.formatDate(
+        new Date(histSh.getRange(lastRow,1).getValue()),
+        "Asia/Taipei",
+        "yyyy-MM-dd"
+      );
+
+      if (lastDate === today) {
+
+        // 同一天 → 覆蓋
+        histSh.getRange(lastRow,2).setValue(investTotalNow);
+
+      } else {
+
+        // 新的一天 → 新增
+        histSh.appendRow([new Date(), investTotalNow]);
+
+      }
+
+    } else {
+
+      // 第一筆
+      histSh.appendRow([new Date(), investTotalNow]);
+
+    }
+
+  }
+}
+
   /* ================================
      🔵 純讀取資料（AI 也會走這裡）
   =================================*/
