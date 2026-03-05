@@ -5,13 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>交易紀錄 V6.46 - 修正版</title>
 
-<!-- 引入 Chart.js -->
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- 引入 Chart.js DataLabels 擴充 -->
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 
 <style>
+  /* 1. 把 canvas 獨立出來放在外面 */
+canvas {
+  touch-action: none;
+}
 :root{
+
   --bg0:#070b12; --bg1:#0b1220;
   --card:#0f1a2c; --txt:#e8eefc;
   --muted:#a9b6d6; --line:rgba(255,255,255,.08);
@@ -51,8 +57,8 @@ body{
 .bigInput:focus{ border-color:var(--blue); outline:none; box-shadow:0 0 0 4px rgba(47,123,255,.2); }
 
 input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
 .chip{ padding:8px 12px;border-radius:999px; background:rgba(47,123,255,.15); border:1px solid rgba(47,123,255,.35); font-size:13px;font-weight:800; cursor:pointer; }
@@ -272,7 +278,7 @@ button.action-btn { background:rgba(47,123,255,0.2); border-color:rgba(47,123,25
 </div>
 
 <script>
-Chart.register(ChartDataLabels);
+Chart.register(ChartDataLabels, ChartZoom);
 const isGasEnv = typeof google !== 'undefined' && google.script && google.script.run;
 
 const scriptRun = isGasEnv ? google.script.run : (() => {
@@ -367,7 +373,6 @@ function renderCharts() {
         responsive:true, 
         maintainAspectRatio:false, 
         plugins:{ 
-          // 💡 修正 Legend 為顯示，並靠右，這能解決「圖亂掉」的視覺感
           legend:{display:isPie, position:'right', labels:{color:'#fff', boxWidth:12, font:{size:11}}}, 
           datalabels:{
             display:isPie, 
@@ -378,7 +383,20 @@ function renderCharts() {
               let perc=(v*100/sum).toFixed(1); 
               return perc > 3 ? perc+'%' : null;
             }
-          } 
+          },
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'x',
+              modifierKey: null,
+              threshold: 0
+            },
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: 'x'
+            }
+          }
         }, 
         scales: isPie?{}:{
           x:{ticks:{color:'#a9b6d6', font:{size:10}}, grid:{color:'rgba(255,255,255,0.05)'}},
@@ -387,7 +405,22 @@ function renderCharts() {
       }
     });
   };
-  if(cachedData.history && cachedData.history.length) config('historyChart', 'line', cachedData.history.map(d=>d.date), cachedData.history.map(d=>d.val), false);
+  if(cachedData.history && cachedData.history.length){
+    const labels = cachedData.history.map(d => d.date);
+    const values = cachedData.history.map(d => d.val);
+
+    // 1. 餵入完整數據（不使用 .slice）
+    config('historyChart', 'line', labels, values, false);
+
+    // 2. 獲取圖表實例並鎖定初始視窗
+    const chart = charts['historyChart'];
+    if(chart && labels.length > 7){
+      chart.options.scales.x.min = labels[labels.length - 7];
+      chart.options.scales.x.max = labels[labels.length - 1];
+      chart.update('none'); // 快速套用，不跑多餘動畫
+    }
+  }
+
   config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
   config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
 }
