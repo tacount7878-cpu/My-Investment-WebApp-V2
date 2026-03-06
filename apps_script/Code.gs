@@ -342,46 +342,117 @@ if (inputs) {
 }
 
 /* ================================
-   4️⃣ AI 助理分析 - V7 雙模式務實版
-   (整合中英偵測、自動排序、去客服語氣)
+   4️⃣ AI 助理分析 - V7.1 細項直讀版
+   📍 替換位置：整個 callGeminiAnalysis 函式（從 function 到最後的 } ）
+   📍 不影響：getDashboardData、saveTrades、UI 等其他部分
 ================================ */
 function callGeminiAnalysis(userQuery) {
   if (!GEMINI_API_KEY) return "⚠️ 翔翔，API Key 未設定。";
 
-  // 1. 抓取最新資料 (AI 專用，直接讀取 Sheet 最新狀態)
-  const data = getDashboardData(null);
-  if (!data || !data.assets) return "翔翔，目前讀不到資料，請檢查 Sheet 狀態。";
+  /* ================================
+     📂 直接讀「庫存彙整(細項)」- AI 專用
+  ================================= */
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  const detailSh = ss.getSheetByName(CONFIG.SHEET_DETAILS);
+  if (!detailSh) return "翔翔，找不到庫存彙整(細項)分頁。";
+
+  // 讀取匯率（A2）
+  const usdRate = parseNum_(detailSh.getRange("A2").getValue()) || 32.2;
+
+  // 讀取總淨值（K2）
+  const totalNetWorth = parseNum_(detailSh.getRange("K2").getValue());
+
+  // 讀取欄位標題（第5行）與資料（第6行起）
+  const lastRow = detailSh.getLastRow();
+  const lastCol = detailSh.getLastColumn();
+  if (lastRow < 6) return "翔翔，目前沒有持倉資料。";
+
+  const headers = detailSh.getRange(5, 1, 1, lastCol).getValues()[0].map(h => String(h || "").trim());
+  // 只讀細項區塊：從第6行開始，遇到空的合併鍵就停止
+  const rawRows = detailSh.getRange(6, 1, lastRow - 5, lastCol).getValues();
+  const dataRows = [];
+  for (let i = 0; i < rawRows.length; i++) {
+    const key = String(rawRows[i][0] || "").trim();
+    if (!key) break;  // 遇到空行就停，不會讀到下面 GROUPED
+    dataRows.push(rawRows[i]);
+  }
+
+  // 把每一行轉成 { 欄位名: 值 } 的物件，過濾空行
+  const allAssets = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const groupKey = String(dataRows[i][0] || "").trim();
+    if (!groupKey || groupKey === "#N/A" || groupKey === "HOLDINGS_GROUPED" || groupKey === "合併鍵(GroupKey)") continue;
+
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      if (headers[j]) row[headers[j]] = dataRows[i][j];
+    }
+    allAssets.push(row);
+  }
+
+  if (allAssets.length === 0) return "翔翔，目前沒有持倉資料。";
+
+  // 讀取已實現損益
+  const logSh = ss.getSheetByName(CONFIG.SHEET_LOGS);
+  let realizedReturnTwd = 0;
+  let realizedReturnPct = 0;
+  if (logSh) {
+    const summary = logSh.getRange("Y1:Z30").getDisplayValues();
+    summary.forEach(r => {
+      const label = String(r[0] || "");
+      if (label.includes("已實現總損益(TWD)")) realizedReturnTwd = parseNum_(r[1]);
+      if (label.includes("已實現總損益(%)")) realizedReturnPct = Number(String(r[1]).replace("%", "").replace(/,/g, "")) || 0;
+    });
+  }
 
   /* ================================
      🔍 模式偵測：掃描問題中是否包含特定標的
   ================================= */
-  let targetAsset = null;
   const q = String(userQuery || "").toLowerCase();
+  let matchedAssets = [];
 
-  // 排序：報酬率由低到高 (讓 AI 優先關注虧損標的)
-  const sortedAssets = [...data.assets].sort((a, b) => a.returnRate - b.returnRate);
+  for (const a of allAssets) {
+    const groupKey = String(a["合併鍵(GroupKey)"] || "").toLowerCase();
+    const symbol = String(a["Yahoo代號(Symbol)"] || "").toLowerCase();
+    const name = String(a["標的名稱"] || "").toLowerCase();
 
-  // 偵測邏輯：直接掃描名稱，包含中英文識別
-  for (const a of sortedAssets) {
-    const fullName = String(a.name || "").toLowerCase();
-    const symbolPart = fullName.split('(')[0].trim(); // 抓括號前的代號
-    const namePart = fullName.includes('(') ? fullName.split('(')[1].replace(')', '').trim() : ""; // 抓括號內的中文
+    // 比對 GroupKey 括號前、括號內、Yahoo代號、標的名稱
+    const keyMain = groupKey.split('(')[0].trim();
+    const keyInner = groupKey.includes('(') ? groupKey.split('(')[1].replace(')', '').trim() : "";
 
-    if (q.includes(symbolPart) || (namePart && q.includes(namePart))) {
-      targetAsset = a;
-      break; 
+    if (q.includes(keyMain) || (keyInner && q.includes(keyInner)) || q.includes(symbol) || q.includes(name)) {
+      matchedAssets.push(a);
     }
   }
 
   /* ================================
-     📊 格式化資產字串 (提升 AI 解析效率)
+     📊 格式化函式：把一行資料轉成 AI 能讀的字串
   ================================= */
-  const assetStr = sortedAssets.map(a => 
-    `${a.name} | 市值 ${Math.round(a.value).toLocaleString()} | 報酬 ${a.returnRate.toFixed(2)}%`
-  ).join('\n');
+  const formatRow = (a) => {
+    const parts = [
+      `合併鍵:${a["合併鍵(GroupKey)"] || ""}`,
+      `名稱:${a["標的名稱"] || ""}`,
+      `代號:${a["Yahoo代號(Symbol)"] || ""}`,
+      `類別:${a["資產類別"] || ""}`,
+      `地區:${a["投資地區"] || ""}`,
+      `平台:${a["平台"] || ""}`,
+      `帳戶:${a["帳戶類型"] || ""}`,
+      `幣別:${a["幣別"] || ""}`,
+      `持有股數:${a["持有股數"] || 0}`,
+      `均價(原幣):${a["均價(原幣)"] || 0}`,
+      `成本(原幣):${a["成本(原幣)"] || 0}`,
+      `目前市價:${a["目前市價"] || 0}`,
+      `市值(原幣):${a["市值(原幣)"] || 0}`,
+      `損益(原幣):${a["損益(原幣)"] || 0}`,
+      `市值(TWD):${a["市值(TWD)"] || 0}`,
+      `損益(TWD):${a["損益(TWD)"] || 0}`,
+      `報酬率:${a["報酬率"] !== "" && a["報酬率"] !== undefined ? (Number(a["報酬率"]) * 100).toFixed(2) + "%" : "N/A"}`
+    ];
+    return parts.join(' | ');
+  };
 
   /* ================================
-     🧠 V7 務實派系統指令 (Prompt)
+     🧠 V7.1 系統指令
   ================================= */
   let systemInstruction = `
 ## 定位
@@ -392,20 +463,40 @@ function callGeminiAnalysis(userQuery) {
 - 嚴禁矯情陪伴：禁止「我陪你」、「不用擔心」、「姊姊在看」。
 - 避開銀行行話：不要說「獲利了結」、「配置調整」、「短期偏熱」。
 
-## 任務與結構
-1. 第一段：一句話總結（必須包含「翔翔」二字，位置不限）。
-2. 第二段：列表顯示（若資產數量 >= 2）。格式：• 名稱：市值 X，報酬 X%。
-3. 第三段：一句短評論（描述事實或波動來源，可省略）。
-4. 只做觀察與描述，除非翔翔問「要不要賣」，否則不主動給予操作建議。
+## 重要：精準回答規則
+- 如果翔翔問的是特定標的，只回答那個標的的資訊，嚴禁列出其他資產。
+- 如果問到美元金額，直接使用資料中的原幣數字回答，不要說「需要換算」。
+- 如果同一個合併鍵有多筆（例如不同平台），把數字加總後回答。
+- 如果資料裡有現成的數字，直接引用，不要含糊帶過。
+- 回答金額時，原幣和 TWD 都要提供。
+
+## 回覆格式
+- 不需要每次都叫「翔翔」，自然就好，偶爾提到即可。
+- 針對問題直接回答，不要繞圈子。
+- 只做觀察與描述，除非翔翔問「要不要賣」，否則不主動給予操作建議。
+
+## 基礎資訊
+- USD/TWD 匯率：${usdRate}
+- 資產總淨值(TWD)：${totalNetWorth.toLocaleString()}
+- 已實現損益(TWD)：${Math.round(realizedReturnTwd).toLocaleString()}
+- 已實現損益(%)：${realizedReturnPct}%
 `;
 
-  if (targetAsset) {
-    // 🎯 模式 A：單一標的焦點模式
-    const info = `${targetAsset.name} | 市值 ${Math.round(targetAsset.value).toLocaleString()} | 報酬 ${targetAsset.returnRate.toFixed(2)}%`;
-    systemInstruction += `\n現在只需分析此單一標的：\n${info}`;
+  if (matchedAssets.length > 0) {
+    // 🎯 模式 A：特定標的
+    const assetStr = matchedAssets.map(formatRow).join('\n');
+    systemInstruction += `
+## 當前任務：只分析以下標的（可能有多筆，屬於同一合併鍵的不同平台）
+${assetStr}
+
+⚠️ 嚴禁列出或提及上面以外的任何標的。`;
   } else {
-    // 📊 模式 B：整體組合戰情模式
-    systemInstruction += `\n現在分析整體戰情：\n總市值：${Math.round(data.investTotal).toLocaleString()} TWD\n已實現損益：${Math.round(data.realizedReturnTwd).toLocaleString()} TWD\n資產細節(已由差到好排序)：\n${assetStr}`;
+    // 📊 模式 B：整體戰情
+    const assetStr = allAssets.map(formatRow).join('\n');
+    systemInstruction += `
+## 當前任務：分析整體戰情
+全部持倉明細：
+${assetStr}`;
   }
 
   /* ================================
@@ -414,8 +505,8 @@ function callGeminiAnalysis(userQuery) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=" + GEMINI_API_KEY;
   const payload = {
     contents: [{ role: "user", parts: [{ text: systemInstruction + "\n問題：" + userQuery }] }],
-    generationConfig: { 
-      temperature: 0.2, // 保持穩定冷靜
+    generationConfig: {
+      temperature: 0.2,
       maxOutputTokens: 500
     }
   };
@@ -427,14 +518,12 @@ function callGeminiAnalysis(userQuery) {
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
-    
+
     const json = JSON.parse(res.getContentText());
     if (json.error) return "翔翔，系統干擾：" + json.error.message;
-    
+
     let reply = json.candidates?.[0]?.content?.parts?.[0]?.text || "訊號中斷，翔翔請稍後。";
-    
-    // 移除所有 Markdown 符號（保持介面乾淨）
-    return reply.replace(/[\*#_~`\[\]]/g, "").trim(); 
+    return reply.replace(/[\*#_~`\[\]]/g, "").trim();
   } catch (e) {
     return "伺服器波動，翔翔請稍後再試。";
   }
@@ -458,7 +547,7 @@ function parseNum_(val) {
    🧪 AI 測試工具（不用部署）
 ================================ */
 function testAI() {
-  const queries = ["TSLA表現如何", "目前整體戰情"];
+  const queries = ["TSLA表現如何", "把每一個股票的報酬率列表給我"];
   
   queries.forEach(q => {
     const result = callGeminiAnalysis(q);
