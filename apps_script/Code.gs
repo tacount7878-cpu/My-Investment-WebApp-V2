@@ -342,111 +342,101 @@ if (inputs) {
 }
 
 /* ================================
-   4️⃣ AI 助理分析 - V4.2 Balanced War Room
+   4️⃣ AI 助理分析 - V7 雙模式務實版
+   (整合中英偵測、自動排序、去客服語氣)
 ================================ */
 function callGeminiAnalysis(userQuery) {
+  if (!GEMINI_API_KEY) return "⚠️ 翔翔，API Key 未設定。";
 
-  if (!GEMINI_API_KEY) 
-    return "⚠️ 翔翔，API Key 未設定。";
-
+  // 1. 抓取最新資料 (AI 專用，直接讀取 Sheet 最新狀態)
   const data = getDashboardData(null);
+  if (!data || !data.assets) return "翔翔，目前讀不到資料，請檢查 Sheet 狀態。";
 
   /* ================================
-     📊 風險排序引擎（純程式）
+     🔍 模式偵測：掃描問題中是否包含特定標的
   ================================= */
+  let targetAsset = null;
+  const q = String(userQuery || "").toLowerCase();
 
-  let processedAssets = [];
-  let hasCriticalRisk = false;
+  // 排序：報酬率由低到高 (讓 AI 優先關注虧損標的)
+  const sortedAssets = [...data.assets].sort((a, b) => a.returnRate - b.returnRate);
 
-  if (data.assets && data.assets.length > 0) {
+  // 偵測邏輯：直接掃描名稱，包含中英文識別
+  for (const a of sortedAssets) {
+    const fullName = String(a.name || "").toLowerCase();
+    const symbolPart = fullName.split('(')[0].trim(); // 抓括號前的代號
+    const namePart = fullName.includes('(') ? fullName.split('(')[1].replace(')', '').trim() : ""; // 抓括號內的中文
 
-    processedAssets = data.assets.map(a => {
-      const rate = Number(a.returnRate) || 0;
-
-      if (rate <= -10) hasCriticalRisk = true;
-
-      return {
-        name: a.name,
-        value: a.value,
-        rateNum: rate
-      };
-    });
-
-    // 由低到高排序（風險優先）
-    processedAssets.sort((a, b) => a.rateNum - b.rateNum);
+    if (q.includes(symbolPart) || (namePart && q.includes(namePart))) {
+      targetAsset = a;
+      break; 
+    }
   }
-
-  const assetStr = processedAssets.map(a =>
-    `${a.name}(市值:${Math.round(a.value/10000)}萬, 報酬:${a.rateNum.toFixed(2)}%)`
-  ).join("、");
 
   /* ================================
-     🧠 Prompt 設計
+     📊 格式化資產字串 (提升 AI 解析效率)
   ================================= */
+  const assetStr = sortedAssets.map(a => 
+    `${a.name} | 市值 ${Math.round(a.value).toLocaleString()} | 報酬 ${a.returnRate.toFixed(2)}%`
+  ).join('\n');
 
-  let systemPrompt = `
-妳是翔翔的專屬金融管家，同時保留30%溫柔姊姊人格。
-回答以理性分析為主（約70%），情緒陪伴為輔（約30%）。
+  /* ================================
+     🧠 V7 務實派系統指令 (Prompt)
+  ================================= */
+  let systemInstruction = `
+## 定位
+你是一個理性、成熟、對翔翔有好感的投資資料分析助手。語氣自然、簡短，像真人聊天。
 
-回答規則：
-1. 先給結論，再給觀察。
-2. 若存在負報酬標的，優先說明。
-3. 若存在超過20%報酬標的，提醒可能過熱。
-4. 禁止冗長鋪陳。
-5. 文字精準、冷靜。
+## 語氣禁令
+- 嚴禁客服腔：禁止「很高興為您服務」、「竭誠為您分析」、「請注意」。
+- 嚴禁矯情陪伴：禁止「我陪你」、「不用擔心」、「姊姊在看」。
+- 避開銀行行話：不要說「獲利了結」、「配置調整」、「短期偏熱」。
 
-【目前資產狀況】
-總市值：${Math.round(data.investTotal).toLocaleString()} TWD
-已實現損益：${Math.round(data.realizedReturnTwd).toLocaleString()} TWD
-資產列表（已依風險排序）：
-${assetStr}
+## 任務與結構
+1. 第一段：一句話總結（必須包含「翔翔」二字，位置不限）。
+2. 第二段：列表顯示（若資產數量 >= 2）。格式：• 名稱：市值 X，報酬 X%。
+3. 第三段：一句短評論（描述事實或波動來源，可省略）。
+4. 只做觀察與描述，除非翔翔問「要不要賣」，否則不主動給予操作建議。
 `;
 
-  if (hasCriticalRisk) {
-    systemPrompt += `
-⚠️ 系統提示：偵測到跌幅超過10%的標的，必須優先說明其風險。
-`;
+  if (targetAsset) {
+    // 🎯 模式 A：單一標的焦點模式
+    const info = `${targetAsset.name} | 市值 ${Math.round(targetAsset.value).toLocaleString()} | 報酬 ${targetAsset.returnRate.toFixed(2)}%`;
+    systemInstruction += `\n現在只需分析此單一標的：\n${info}`;
+  } else {
+    // 📊 模式 B：整體組合戰情模式
+    systemInstruction += `\n現在分析整體戰情：\n總市值：${Math.round(data.investTotal).toLocaleString()} TWD\n已實現損益：${Math.round(data.realizedReturnTwd).toLocaleString()} TWD\n資產細節(已由差到好排序)：\n${assetStr}`;
   }
 
-  systemPrompt += `
-【輸出限制】
-- 必須稱呼「翔翔」
-- 純文字
-- 不得使用 Markdown
-- 150字內
-`;
-
+  /* ================================
+     🚀 呼叫 Gemini
+  ================================= */
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=" + GEMINI_API_KEY;
-
   const payload = {
-    contents: [{
-      role: "user",
-      parts: [{
-        text: systemPrompt + "\n翔翔的問題：" + userQuery
-      }]
-    }]
+    contents: [{ role: "user", parts: [{ text: systemInstruction + "\n問題：" + userQuery }] }],
+    generationConfig: { 
+      temperature: 0.2, // 保持穩定冷靜
+      maxOutputTokens: 500
+    }
   };
 
   try {
-    const response = UrlFetchApp.fetch(url, {
+    const res = UrlFetchApp.fetch(url, {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
-
-    const json = JSON.parse(response.getContentText());
-
-    if (json.error)
-      return "翔翔，系統干擾：" + json.error.message;
-
-    let reply = json.candidates?.[0]?.content?.parts?.[0]?.text
-                || "翔翔，訊號短暫中斷。";
-
-    return reply.replace(/[\*#_~`\[\]]/g, "").trim();
-
+    
+    const json = JSON.parse(res.getContentText());
+    if (json.error) return "翔翔，系統干擾：" + json.error.message;
+    
+    let reply = json.candidates?.[0]?.content?.parts?.[0]?.text || "訊號中斷，翔翔請稍後。";
+    
+    // 移除所有 Markdown 符號（保持介面乾淨）
+    return reply.replace(/[\*#_~`\[\]]/g, "").trim(); 
   } catch (e) {
-    return "翔翔，伺服器波動，稍後再試。";
+    return "伺服器波動，翔翔請稍後再試。";
   }
 }
 
@@ -462,4 +452,18 @@ function parseNum_(val) {
   if (val === "" || val === null || val === undefined) return 0;
   if (typeof val === "number") return val;
   return Number(String(val).replace(/,/g, "")) || 0;
+}
+
+/* ================================
+   🧪 AI 測試工具（不用部署）
+================================ */
+function testAI() {
+  const queries = ["TSLA表現如何", "目前整體戰情"];
+  
+  queries.forEach(q => {
+    const result = callGeminiAnalysis(q);
+    Logger.log("--- 測試開始 ---");
+    Logger.log("問題: " + q);
+    Logger.log("AI回答: " + result);
+  });
 }
