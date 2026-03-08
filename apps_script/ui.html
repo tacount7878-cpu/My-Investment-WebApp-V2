@@ -363,12 +363,12 @@ function calcTotalNetWorth() {
 
 function renderCharts() {
   if(!cachedData) return;
-  const config = (id, type, labels, data, isPie) => {
+  const config = (id, type, labels, data, isPie, customColors) => {
     const canvas = document.getElementById(id); if(!canvas) return;
     const ctx = canvas.getContext('2d'); if(charts[id]) charts[id].destroy();
     charts[id] = new Chart(ctx, {
       type: type,
-      data: { labels, datasets: [{ label:'價值', data, backgroundColor: isPie ? ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA'] : 'rgba(47,123,255,0.2)', borderColor:'#2f7bff', fill:true, tension:0.4, borderWidth: isPie ? 0 : 2, pointRadius: isPie ? 0 : 4, pointBackgroundColor: '#2f7bff' }] },
+      data: { labels, datasets: [{ label:'價值', data, backgroundColor: isPie ? (customColors || ['#4285F4','#34A853','#FBBC05','#EA4335','#00BCD4','#8E24AA']) : 'rgba(47,123,255,0.2)', borderColor:'#2f7bff', fill:true, tension:0.4, borderWidth: isPie ? 0 : 2, pointRadius: isPie ? 0 : 4, pointBackgroundColor: '#2f7bff' }] },
       options: { 
         responsive:true, 
         maintainAspectRatio:false, 
@@ -421,8 +421,10 @@ function renderCharts() {
     }
   }
 
-  config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true);
-  config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true);
+  const assetColors = ['#2962FF','#5C85FF','#34A853','#C8A45C','#EF5350','#FF7043','#FF8A80','#9C27B0'];
+  config('assetsChart', 'doughnut', cachedData.assets.map(d=>d.name), cachedData.assets.map(d=>d.value), true, assetColors);
+  const regionColors = ['#2962FF','#EF5350','#C8A45C','#9C27B0','#34A853'];
+  config('regionsChart', 'doughnut', cachedData.regions.map(d=>d.name), cachedData.regions.map(d=>d.value), true, regionColors);
 }
 
 function quick(n,s,p){ document.getElementById('name').value=n; document.getElementById('symbol').value=s; document.getElementById('platform').value=p; }
