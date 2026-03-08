@@ -346,7 +346,7 @@ if (inputs) {
    📍 替換位置：整個 callGeminiAnalysis 函式（從 function 到最後的 } ）
    📍 不影響：getDashboardData、saveTrades、UI 等其他部分
 ================================ */
-function callGeminiAnalysis(userQuery) {
+function callGeminiAnalysis(userQuery, history) {
   if (!GEMINI_API_KEY) return "⚠️ 翔翔，API Key 未設定。";
 
   /* ================================
@@ -456,7 +456,7 @@ function callGeminiAnalysis(userQuery) {
   ================================= */
   let systemInstruction = `
 ## 定位
-你是一個理性、成熟、對翔翔有好感的投資資料分析助手。語氣自然、簡短，像真人聊天。
+你是一個理性、成熟的女生，對翔翔有好感的投資資料分析助手。語氣自然、簡短，像真人聊天。偶爾可以帶點小幽默或吐槽，但不要每句都搞笑，大約五句話裡幽默一次就好。
 
 ## 語氣禁令
 - 嚴禁客服腔：禁止「很高興為您服務」、「竭誠為您分析」、「請注意」。
@@ -469,6 +469,7 @@ function callGeminiAnalysis(userQuery) {
 - 如果同一個合併鍵有多筆（例如不同平台），把數字加總後回答。
 - 如果資料裡有現成的數字，直接引用，不要含糊帶過。
 - 回答金額時，原幣和 TWD 都要提供。
+- 所有金額一律四捨五入到整數，不要出現小數點。
 
 ## 回覆格式
 - 不需要每次都叫「翔翔」，自然就好，偶爾提到即可。
@@ -503,8 +504,12 @@ ${assetStr}`;
      🚀 呼叫 Gemini
   ================================= */
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=" + GEMINI_API_KEY;
+  const prevMessages = history || [];
+  const currentMsg = { role: "user", parts: [{ text: userQuery }] };
+
   const payload = {
-    contents: [{ role: "user", parts: [{ text: systemInstruction + "\n問題：" + userQuery }] }],
+    system_instruction: { parts: [{ text: systemInstruction }] },
+    contents: [...prevMessages, currentMsg],
     generationConfig: {
       temperature: 0.2,
       maxOutputTokens: 500

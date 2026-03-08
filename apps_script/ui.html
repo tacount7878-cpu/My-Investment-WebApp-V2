@@ -458,11 +458,18 @@ function submitTrade() {
 }
 
 function toggleAI() { const win = document.getElementById('ai-window'); win.style.display = win.style.display === 'flex' ? 'none' : 'flex'; }
+let chatHistory = [];
+
 function sendChat() {
   const input = document.getElementById('ai-input'), text = input.value.trim(); if(!text) return;
   appendMsg(text, 'user'); input.value = '';
   const id = 'msg-' + Date.now(); appendMsg('姊姊正在看喔! 等一下...', 'mimi', id);
-  scriptRun.withSuccessHandler(res => { document.getElementById(id).innerText = res; }).callGeminiAnalysis(text, cachedData);
+  scriptRun.withSuccessHandler(res => {
+    document.getElementById(id).innerText = res;
+    chatHistory.push({ role: "user", parts: [{ text: text }] });
+    chatHistory.push({ role: "model", parts: [{ text: res }] });
+    if (chatHistory.length > 10) chatHistory.splice(0, 2);
+  }).callGeminiAnalysis(text, chatHistory);
 }
 function appendMsg(t, type, id) {
   const body = document.getElementById('ai-chat-body'), div = document.createElement('div'); div.className = 'msg msg-' + type; div.innerText = t; if(id) div.id = id;
